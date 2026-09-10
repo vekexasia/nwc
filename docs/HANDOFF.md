@@ -88,3 +88,17 @@ Verified directly in the new directory:
 After the completed import, the offline regression, both saved-ledger reruns,
 15 capture tests, 8 web Python tests, both Node lifecycle modes and OAuth checks
 passed. This does not establish a working gameplay decoder or live deployment.
+
+## Update 2026-09-10: private remote published
+
+The import above stated that this is a local repository with no remote or initial
+commit. That was accurate as of the import; it is now superseded.
+
+- Initial commit `45bed3c` on `main`, 52 files, source and docs only (492K).
+- Private GitHub remote `vekexasia/nwc`, `main` in sync with `origin/main`.
+  Remote tree verified: no `.env`, no captures, no `private/` results, no
+  `frida-server.exe` and no `.bin`/`.exe` artifacts.
+- Live host identifiers were redacted to placeholders in `docs/Streaming/` and
+  `docs/Network/`; the real values are recorded only in the gitignored `.env`.
+
+No capture, deployment or decoder behavior changed as part of this.

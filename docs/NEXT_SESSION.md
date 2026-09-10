@@ -120,3 +120,20 @@ capture stops and owned-worker cleanup is verified.
 This is a local Git repository on main, with no remote or initial commit as of
 this handoff. Files are saved on disk, not pushed or externally backed up. Check
 Git status and review the source-only file set before committing or publishing.
+
+## Update 2026-09-10: repository published privately
+
+The wording above describing an uncommitted, unpushed repository is historical.
+Current state:
+
+- `main` has initial commit `45bed3c`, 52 files, source and docs only.
+- Remote: private `vekexasia/nwc` (https://github.com/vekexasia/nwc),
+  `main` tracks `origin/main` and is in sync.
+- Live host details were redacted before the first commit: `62.210.248.2` ->
+  `YOUR_GAMING_HOST`, the client public IPv4 -> `YOUR_CLIENT_IP`, the SSH host key
+  fingerprint removed, `/home/andrea/...` -> `~/...`.
+- Real values live in the gitignored `.env`; `.env.example` documents the keys.
+  Neither the captures nor `private/` nor the Frida server binary are tracked.
+- Commit identity is set in this repository only, to the GitHub noreply address.
+
+The technical next step further down is unchanged.
