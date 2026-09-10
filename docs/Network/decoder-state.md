@@ -71,6 +71,15 @@ builder. Its static field table and descriptor readers are now recovered; see
   walk the stream exactly.
   Property order, mask bits and semantic values of the Vitals payload remain open for the same reason.
   The negative pass is kept as historical evidence in [health-field-deepseek.md](health-field-deepseek.md).
+- Offline decode attempt (2026-09-10): the Vitals framing was read statically — `FUN_1465B0DD0`
+  builds the object, `FUN_146160AE0` runs three vtable stages (`+0x90` mask-driven members,
+  `+0xa0` one member at `+0x680`, `+0xb0` a delta list whose entries apply a varint through
+  member vtable `+0x50`), and `+0x90` (`FUN_1417B4110`) reads one byte per chunk of up to eight
+  members and calls each set member's codec (`FUN_1417B43C0`, vtable `+0x30`). Decoding the 39
+  type-15 candidates of the fight capture with that grammar (19 fields, widths from the builder)
+  in four member orders lands on a valid record boundary **0 of 39 times**, so the simplified
+  grammar is wrong and/or those candidates are false positives. The live record-layer trace is
+  what separates the two cases.
 ## Artifacts and where they live
 
 In the repository (all new files, nothing committed yet):
