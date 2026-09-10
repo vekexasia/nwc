@@ -148,7 +148,8 @@ def build_namespace(project, program):
 
     def find_bytes(pattern: bytes, limit: int = 50) -> list:
         """Addresses where the byte pattern occurs in any memory block."""
-        java_bytes = jpype.JArray(jpype.JByte)(list(pattern))
+        signed = [b - 256 if b > 127 else b for b in pattern]  # JByte is signed
+        java_bytes = jpype.JArray(jpype.JByte)(signed)
         out = []
         memory = program.getMemory()
         for block in memory.getBlocks():
