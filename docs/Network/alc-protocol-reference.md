@@ -11,7 +11,8 @@ measurement given. **INFERRED** = a conclusion that goes beyond that. Anything m
 safe to revisit, anything marked VERIFIED should not be re-litigated without new evidence.
 
 Build note: all addresses are RVAs into the installed `NewWorld.exe` (image base `0x140000000`),
-which matches the community's registry dump (3484 of its 3487 uuids appear verbatim in this file).
+which matches the community's registry dump (all 3487 of its uuids appear in this file: 1651 in the
+exact uppercase form, 1835 in lowercase).
 
 ---
 

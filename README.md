@@ -15,6 +15,7 @@ YouTube integration and offline protocol experiments. English only.
 - [ALC protocol reference](docs/Network/alc-protocol-reference.md): message layers, readers, the 48 ALC fields and the world position encoding.
 - [Decoder state snapshot](docs/Network/decoder-state.md): where the decoding stands, artifacts, next steps and gotchas.
 - [Ghidra workflow](docs/Network/ghidra-workflow.md): measured costs, batching, and the PyGhidra session wrapper.
+- [Replicated state TODO](docs/Network/replicated-state-todo.md): the 130 bundle states, what is decoded and what to decode next.
 - [External references and attribution](docs/REFERENCES.md).
 - [Workspace handoff](docs/HANDOFF.md): completed background-workflow import and current deployment.
 

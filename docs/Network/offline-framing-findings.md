@@ -109,18 +109,25 @@ teleport ledger as ground truth.
 Checked with `Tools/nw_capture/experimental/offline/probe_registry_static.py`, which parses
 our own `NewWorld.exe` (179 MB, image base 0x140000000) instead of running it:
 
-- The community registry dump describes **our** build: 3484 of its 3487 uuids appear as
-  literal strings in the local executable (case-insensitive; 1651 of them in the exact
-  uppercase form), and all 312 entries that carry a name have that name present.
+- The community registry dump describes **our** build: all 3487 of its uuids appear as literal
+  strings in the local executable (case-insensitive scan of uuid-shaped tokens; 1651 of them in the
+  exact uppercase form, 1835 in lowercase), and all 312 entries that carry a name have that name
+  present.
 - But the dump only names 312 of its 3487 entries, and none of those names is a
   `*ReplicatedState` type. The types we need are missing from the dump, not absent from the
   game.
-- Our executable does contain them, in two different forms: as plain literals in `.rdata`
-  (`ALCReplicatedState` 3 occurrences, `PlayerComponentReplicatedState` 2, referenced by
-  exactly one static record that holds the name pointer, 19 `.text` pointers and an ASCII
-  uuid in .NET byte order), and as mangled C++ symbols in `.data`, for example
-  `InstallRegistrationHook@VPlayerComponentReplicatedState@Javelin@@...`, i.e. the states
-  live in the `Javelin` namespace.
+- Our executable does contain the state names, but not all of them in the same form, and that
+  decides whether a state can be read off the image at all. `ALCReplicatedState` is a plain literal
+  in `.rdata` (raw `0x80fd590`; 3 occurrences in the file, 2 of them in `.rdata`), and one static
+  record at raw `0x80fd3c0` holds the name pointer, a `.text` pointer table and the ASCII uuid in
+  .NET byte order, which is how its property list was recovered. `PlayerComponentReplicatedState`
+  is not: both of its occurrences are in the `.data` blob of mangled symbol names (raw
+  `0xa1d2f60`, and `0xa24774e` inside the symbol), **no pointer references either**, so there is no
+  descriptor record and no property list to read from it.
+- The mangled symbols in `.data` carry the namespace per type, for example
+  `InstallRegistrationHook@VPlayerComponentReplicatedState@MB@@@Hub@Amazon@@YA_NXZ`; among the 133
+  `InstallRegistrationHook@V*ReplicatedState@<ns>@@` occurrences, `MB` is the common one (104),
+  against `Javelin` (28) and `ClientMessages` (1).
 - The runtime registry that carries `index`/`typeIndex` and the `Marshal`/`Unmarshal`
   addresses is therefore assembled at run time: the file gives names, vtables and code
   addresses, not the indexed table.

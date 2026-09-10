@@ -41,6 +41,36 @@ maps the per-index readers and their observed consumed widths.
 Where the numbers come from: `worldPosAbs` = two big-endian float32 then a quantised u16 in
 `[-100, 1000]` (elevation); `worldPosRel` = three quantised deltas, `0xff` = "no update".
 
+## Health: static field map recovered, live payload still open
+
+Health is **not** an `ALCReplicatedState` property (all 63 checked). The actual network type is
+`MB::VitalsComponentReplicatedState`, a custom group-aware handler rather than the ALC schema
+builder. Its static field table and descriptor readers are now recovered; see
+[health-field.md](health-field.md) for the complete 19-field table.
+
+- UUID `0E721C70-2CDB-4E85-BAE4-D545FDC6D25B`, registry index 3241, **typeIndex 15**
+  (`0x0f` as a one-byte type reference). The registry entry has an empty stored name; the
+  binary registration-hook string supplies the C++ type name.
+- `FUN_14671E040` registers the fields through `FUN_141775C60`. The custom unmarshal path
+  calls `FUN_1417B4110` -> `FUN_1417B43C0`, which invokes selected member codec vtable
+  `+0x30` readers.
+- The health candidates are `HealthAmount` `+0x7c0` (reader `0x142a42f30`, 4 B),
+  `HealthMax` `+0x838` (same reader, 4 B), lower-case `maxHealth` `+0x1000`
+  (reader `0x142a42e10`, 2 B), and `HealthTickRate` `+0x8b0` (reader
+  `0x142a42f80`, 2 B half). There is no registered `HealthRegen` row.
+- `VitalsState` remains a false name hit: it is part of `MatchingVitalsState` and
+  `NotMatchingVitalsState`, not a descriptor.
+- Whether Vitals records are in the captures we hold is **not established**. Searching the streams
+  for the type-15 pattern (`01 01 <V2> 0f`) gives 39 hits in the fight capture, 6 in the dodge
+  capture and 0 in the walking capture, which is suggestive (only where health moved), but the bytes
+  after those hits do not continue as a valid record chain, so they are probably false positives. The
+  report that says the ledger holds only type `0x0b` records used a template that accepts a one-byte
+  type field, which would miss any type whose index needs a longer varint.
+  Settling it needs the record layer traced on a live capture: hook the type reference reader
+  (`0x61ad00f`) and the payload-length copy (`0x2a4371a`) to get the length of every record type, then
+  walk the stream exactly.
+  Property order, mask bits and semantic values of the Vitals payload remain open for the same reason.
+  The negative pass is kept as historical evidence in [health-field-deepseek.md](health-field-deepseek.md).
 ## Artifacts and where they live
 
 In the repository (all new files, nothing committed yet):
