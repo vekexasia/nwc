@@ -108,18 +108,18 @@ assert.equal(callback.onLeave, undefined, 'native callback execution is not repl
 assert(!source.includes('new NativeCallback'));
 assert(!source.includes('new NativeFunction'));
 
-// One uncompressed carrier message: first sequence present, rel-sequence omitted.
-f.memory.set(0x140004000n, Uint8Array.from([0x80, 1, 0, 1, 0x18, 0, 2, 0, 1, 104, 105]));
+// One uncompressed carrier message: first sequence present, rel-sequence present.
+f.memory.set(0x140004000n, Uint8Array.from([0x80, 1, 0, 1, 0x08, 0, 2, 0, 1, 0, 0, 104, 105]));
 const sslRead = f.hooks.get('0x1478f17e0');
 const call = {};
 sslRead.onEnter.call(call, [f.ptr(42), f.ptr(0x140004000n)]);
-sslRead.onLeave.call(call, f.ptr(11));
+sslRead.onLeave.call(call, f.ptr(13));
 assert.equal(f.binary.length, 0, 'record must be pending before stop');
 f.eval('rpc.exports.stop()');
 assert.deepEqual(f.order, ['detach-producers', 'clear-timer', 'ledger', 'ack']);
 assert.equal(f.binary.length, 1);
 const count = f.events.length;
-sslRead.onLeave.call(call, f.ptr(11));
+sslRead.onLeave.call(call, f.ptr(13));
 callback.onEnter([f.ptr(1), f.ptr(0), f.ptr(0x80000), f.ptr(0x140003000n), f.ptr(5)]);
 assert.equal(f.events.length, count, 'in-flight callbacks suppressed after stop');
 const stats = f.events.at(-1).dtls;

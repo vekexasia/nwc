@@ -59,10 +59,18 @@ def main():
     assert errors["chunk_sequence_break"] == 1
     assert [item["payload"] for item in gap] == [b"C"]
     carrier, trailer = module.parse_carrier_messages(
-        b"\x30\x00\x01\x01\x00\x07A\x38\x00\x01\x01B")
+        b"\x20\x00\x01\x01\x00\x07\x00\x00A\x28\x00\x01\x01\x00\x00B")
     assert not trailer
     assert [message.seq for message in carrier] == [7, 8]
     assert [message.payload for message in carrier] == [b"A", b"B"]
+    # The dominant real datagram shape: two unreliable messages. The rel
+    # field is on the wire for both; dropping it from the second one shifted
+    # its payload two bytes early and left a two-byte trailer behind.
+    repeated, trailer = module.parse_carrier_messages(
+        b"\x20\x00\x01\x01\x00\x07\x00\x00A"
+        b"\x20\x00\x02\x01\x00\x08\x00\x00BC")
+    assert not trailer
+    assert [message.payload for message in repeated] == [b"A", b"BC"]
     reliable, trailer = module.parse_carrier_messages(
         b"\x21\x00\x01\x01\xff\xff\x00\x2aA\x39\x00\x01\x01B")
     assert not trailer

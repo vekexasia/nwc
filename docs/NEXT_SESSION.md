@@ -137,3 +137,61 @@ Current state:
 - Commit identity is set in this repository only, to the GitHub noreply address.
 
 The technical next step further down is unchanged.
+
+## Update 2026-09-10 (second): the player position is decoded
+
+The lines above saying that positions, rotation and type-13/coordinate parsing remain undecoded,
+and the "Next technical step" section, are historical. The inbound application records are now
+decoded through the registry's `ALCReplicatedState` type (typeIndex 11) on our own capture, and the
+two position fields are read from the wire.
+
+What is verified:
+
+- The frame and record layers are consumed exactly (the type reference resolves 11,858 of 11,858 in
+  a live run) and the ledger bytes line up with the reader cursors.
+- `worldPosAbs` (`0x142a433d0`, 10 bytes: two big-endian float32 plus a quantised u16 in
+  `[-100, 1000]`) and `worldPosRel` (`0x142a43330`, three quantised deltas, `0xff` = no update) are
+  hooked in the running client; driving two 4 s walks produced a monotonic track
+  (`x 8786.66 -> 8893.83`, second float `3003.97 -> 3126.63`, elevation `58.03 -> 74.35`).
+- The axis assignment is confirmed against the community marker set (55739 markers): with the
+  first float as east and the second as north the decoded positions sit a median of 16.6 units from
+  the nearest recorded marker with a median elevation error of 1.38, swapped 781 units. The track is
+  in Windsward, along the Elin River valley.
+
+Still not decoded or not verified: local-player identity and ownership (the current track is
+separated heuristically by monotonicity and proximity, not by an identity field), the semantics of
+rotation and look direction, equipment changes, the semantics of the ~14 ALC fields, group-1 entries
+beyond bit 0, the affine mapping of the quantised elevation, and an overlay on the map image from a
+plain page (drawing into the live page works).
+
+Documentation in reading order: `docs/Network/alc-protocol-reference.md` (the reference),
+`alc-static-analysis.md` and `alc-runtime-fieldmap.md` (the raw reports),
+`offline-framing-findings.md` (the research log), `position-decoder-plan.md` (the plan),
+`decoder-state.md` (resume snapshot) and `nwdb-map-research.md` (coordinate convention and deep
+links).
+
+Reproduce:
+
+```sh
+# capture while probing exactly the two position readers
+.venv-capture/bin/python Tools/nw_capture/experimental/nw_capture_probe.py \
+    --probe "$PWD/Tools/nw_capture/experimental/nw_pos_probe.js" --seconds 60 --label pos
+# the same, driving the character (needs the game focused; the tool guards and restores focus)
+.venv-capture/bin/python Tools/nw_capture/experimental/nw_walktest.py \
+    --seq "w:4,release:12,w:4,release:12" --wait-focus 120
+# decode the resulting log, then draw it on the map
+.venv-capture/bin/python Tools/nw_capture/experimental/decode_position.py \
+    --log Tools/nw_capture/logs/<run>_pos_samples.log --csv /tmp/pos.csv --json /tmp/pos.json
+```
+
+Map: `https://aeternum-map.th.gl/?x=8800&y=3060&zoom=6` (all three parameters are required), and
+`Tools/nw_capture/experimental/nw_map_trail.js` to draw the decoded points into the live page.
+
+Current next technical step, replacing the one above:
+
+1. The group-aware ALC record payload and 1..9-byte mask reader are implemented and documented in
+   `docs/Network/alc-protocol-reference.md` section 2.4. The trace maps group 0 where its bits were
+   set and group-1 bit 0; the remaining group-1 entries are not evidenced.
+2. Attribute samples to an entity (record context, not proximity) so the trail is continuous and
+   the `worldPosRel` delta scale can be fitted against the absolute anchors.
+3. Only then the live map and trail.

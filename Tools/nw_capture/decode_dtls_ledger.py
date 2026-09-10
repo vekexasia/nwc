@@ -162,25 +162,17 @@ def _parse_carrier_messages(buf: bytes) -> tuple[list[CarrierMessage], bytes, st
                 return msgs, buf[frame_start:], "missing carrier sequence baseline"
             m.seq = (previous_seq + 1) & 0xFFFF
             previous_seq = m.seq
-        # rel_seq: written when reliable and not omitted, or for the first
-        # message's baseline; omitted reliable values derive from the prior.
-        if (flags & MF_RELIABLE) and not (flags & MF_SQUENTIAL_REL_ID):
+        # rel_seq: a 2-byte field on EVERY carrier message, reliable or not.
+        # The sender only omits it (MF_SQUENTIAL_REL_ID) once the receiver has
+        # a baseline to derive the next value from.
+        if not (flags & MF_SQUENTIAL_REL_ID) or previous_rel_seq is None:
             if len(buf) - i < 2:
                 return msgs, buf[frame_start:], "truncated carrier reliable sequence"
             m.rel_seq = int.from_bytes(buf[i:i+2], "big")
             i += 2
-            previous_rel_seq = m.rel_seq
-        elif flags & MF_RELIABLE:
-            if previous_rel_seq is None:
-                return msgs, buf[frame_start:], "missing carrier reliable baseline"
+        else:
             m.rel_seq = (previous_rel_seq + 1) & 0xFFFF
-            previous_rel_seq = m.rel_seq
-        elif is_first and not (flags & MF_SQUENTIAL_REL_ID):
-            if len(buf) - i < 2:
-                return msgs, buf[frame_start:], "truncated carrier reliable baseline"
-            m.rel_seq = int.from_bytes(buf[i:i+2], "big")
-            i += 2
-            previous_rel_seq = m.rel_seq
+        previous_rel_seq = m.rel_seq
         if data_size > 0:
             if len(buf) - i < data_size:
                 return msgs, buf[frame_start:], "truncated carrier payload"

@@ -11,7 +11,9 @@ YouTube integration and offline protocol experiments. English only.
 - [Web application](Tools/nw_capture/web/README.md): START/STOP, environment variables, storage and security.
 - [YouTube OAuth setup](Tools/nw_capture/web/YOUTUBE.md): one-time authorization, unlisted broadcasts and recovery.
 - [Capture CLI](Tools/nw_capture/README.md): attach modes, cleanup and limitations.
-- [Offline position experiment](docs/Network/offline-position-proof.md): actual results, not a working position decoder.
+- [Offline position experiment](docs/Network/offline-position-proof.md): the original rejection-first diagnostic, superseded by the decoders below.
+- [ALC protocol reference](docs/Network/alc-protocol-reference.md): message layers, readers, the 48 ALC fields and the world position encoding.
+- [Decoder state snapshot](docs/Network/decoder-state.md): where the decoding stands, artifacts, next steps and gotchas.
 - [External references and attribution](docs/REFERENCES.md).
 - [Workspace handoff](docs/HANDOFF.md): completed background-workflow import and current deployment.
 

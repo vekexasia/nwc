@@ -1,0 +1,88 @@
+#!/usr/bin/env python3
+"""Attach to the already-running New World (Proton) and run one Frida probe with the repo's
+DTLS ledger capture. Reusable wrapper around the documented attach route.
+
+    .venv-capture/bin/python Tools/nw_capture/experimental/nw_capture_probe.py \
+        --probe Tools/nw_capture/experimental/nw_field_probe.js --seconds 40 --label walktest
+
+Writes: Tools/nw_capture/captures/<session>/dtls/ledger.bin and Tools/nw_capture/logs/<ts>_<label>.log
+The game is never spawned, restarted or killed; the probe must be read-only.
+"""
+from __future__ import annotations
+
+import argparse
+import contextlib
+import os
+import socket
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+import frida
+
+REPO = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(REPO / "Tools/nw_capture"))
+from _runner import FridaRunner  # noqa: E402
+
+STEAM = Path.home() / ".local/share/Steam/steamapps"
+RUNTIME = str(STEAM / "common/SteamLinuxRuntime_4/run")
+WINE = str(STEAM / "common/Proton 11.0/files/bin/wine")
+PFX = str(STEAM / "compatdata/1063730/pfx")
+PORT = 27943
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--probe", required=True, type=Path)
+    parser.add_argument("--seconds", type=float, default=40.0)
+    parser.add_argument("--label", default="probe")
+    args = parser.parse_args(argv)
+    args.probe = args.probe.resolve()   # _runner resolves relative probes against Tools/nw_capture
+
+    env = dict(os.environ, WINEPREFIX=PFX, WINEDEBUG="-all")
+    server = subprocess.Popen([RUNTIME, "--", WINE, str(REPO / "Tools/nw_capture/frida-server.exe"),
+                               "--listen", f"127.0.0.1:{PORT}"], env=env,
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                              start_new_session=True)
+    device = attached = None
+    try:
+        for _ in range(100):
+            try:
+                with socket.create_connection(("127.0.0.1", PORT), timeout=0.2):
+                    break
+            except OSError:
+                time.sleep(0.2)
+        device = frida.get_device_manager().add_remote_device(f"127.0.0.1:{PORT}")
+        procs = device.enumerate_processes()
+        targets = [p for p in procs if p.name.lower() == "newworld.exe"]
+        servers = [p for p in procs if p.name.lower() == "frida-server.exe"]
+        if len(targets) != 1 or len(servers) != 1:
+            print("BLOCKED: expected one NewWorld.exe and one frida-server.exe", file=sys.stderr)
+            return 1
+        attached = targets[0].pid
+        session = time.strftime("proton_%Y%m%d_%H%M%S") + "-" + args.label
+        runner = FridaRunner(None, scripts=[str(args.probe)], timeout_s=args.seconds,
+                             log_stem=args.label, session=session,
+                             host=f"127.0.0.1:{PORT}", pid=attached)
+        print(f"session={runner.session}")
+        print(f"ledger={runner._ledger_path}")
+        sys.stdout.flush()
+        code = runner.run()
+        print(f"log={runner.log_path}")
+        print(f"runner_exit={code}")
+        print(f"game_alive={any(p.pid == attached for p in device.enumerate_processes())}")
+        return 0
+    finally:
+        if device is not None:
+            with contextlib.suppress(Exception):
+                servers = [p.pid for p in device.enumerate_processes()
+                           if p.name.lower() == "frida-server.exe"]
+                if servers:
+                    device.kill(servers[0])
+        with contextlib.suppress(Exception):
+            server.wait(timeout=10)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
