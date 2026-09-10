@@ -1,5 +1,29 @@
 # New World streaming host
 
+## Status: host deleted (2026-09-10)
+
+The Instance, its 250 GB Block Storage volume and both flexible IPs were deleted
+on 2026-09-10 to stop compute and storage charges. Nothing billable remains in the
+project. The Instance had been powered off earlier the same day; a guest-side
+`poweroff` had left it in Scaleway Standby, which does not stop billing, so it was
+powered off from the provider console instead.
+
+Provisioning scripts were recovered before deletion and now live in the repository:
+
+- `Tools/provisioning/new-world-install.sh` - reconstructed from the session transcript.
+  It does not include the separate `linux-modules-extra-6.8.0-106-generic` install
+  that supplied UHID.
+- `Tools/provisioning/new-world-configure.sh` - the file that was pushed to the host,
+  with the later-removed `audio_sink = game_audio` line deleted to match the final
+  documented state.
+
+Recreating this host from those scripts is **not** turnkey. Lost with the volume and
+not recoverable from any script: the Steam login and Steam Guard state of `gamer`,
+the Sunshine admin credentials and the Moonlight pairing, the Sunshine
+`apps.json` edit, and the New World plus Proton 11.0 game data (~90 GB, needs a
+fresh download). The sections below are the historical record of the provisioning and
+the 2026-09-10 smoke test; read their present-tense operational claims as history.
+
 ## Host and access
 
 - Scaleway `new-world-capture`, `YOUR_GAMING_HOST`, Ubuntu 24.04, NVIDIA L4.
@@ -10,7 +34,8 @@
 ssh -S ~/.ssh/new-world-control -o BatchMode=yes root@YOUR_GAMING_HOST 'hostname'
 ```
 
-No automatic shutdown is configured. The running VM continues to incur charges.
+No automatic shutdown was configured. The running VM incurred charges until it was
+powered off and then deleted on 2026-09-10.
 
 ## Installed configuration
 
@@ -23,7 +48,7 @@ Parsec only advertises hosting on Windows/macOS, so this host uses Sunshine and 
 - PulseAudio: Sunshine currently captures `sink-sunshine-stereo.monitor`. The earlier `audio_sink = game_audio` override broke live audio and was removed from Sunshine and the provisioning script; do not restore it.
 - `uinput` and `uhid` available to `gamer` through the `input` group. `linux-modules-extra-6.8.0-106-generic` supplies UHID.
 
-Provisioning commands and configuration are retained on the VM in `/root/new-world-install.sh` and `/root/new-world-configure.sh`. Install logs: `/var/log/new-world-install.log` and `/var/log/new-world-input-install.log`. The configuration script is for initial provisioning and overwrites the listed configuration files.
+Provisioning commands and configuration were retained on the VM in `/root/new-world-install.sh` and `/root/new-world-configure.sh`; those copies are gone with the deleted volume. The recovered scripts are in `Tools/provisioning/`. Install logs were `/var/log/new-world-install.log` and `/var/log/new-world-input-install.log`. The configuration script is for initial provisioning and overwrites the listed configuration files.
 
 Key configuration files:
 
