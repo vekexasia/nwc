@@ -1,0 +1,25 @@
+# Private capture material and machine-specific operations
+/Tools/nw_capture/captures/
+/Tools/nw_capture/logs/
+/private/
+/.venv*/
+.env
+.env.*
+!.env.example
+__pycache__/
+*.pyc
+*.log
+*.zip
+*.rar
+*.tar
+*.mkv
+*.mp4
+*.bin
+*.exe
+*.dll
+*.so
+*.key
+*.pem
+*keylog*
+*client_secret*.json
+*oauth*.json
