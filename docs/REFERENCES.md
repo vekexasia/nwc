@@ -41,6 +41,29 @@ https://nwdb.info/tooltips; terms: https://nwdb.info/terms-and-conditions.
 Do not scrape/rehost its data or tiles without the required permission. It does not
 supply our live player positions. No NWDB assets are bundled.
 
+## ratbuddy / ow.ratbuddy.com
+
+- Dashboard: https://ow.ratbuddy.com/, indexing `/completeness/`, `/spectrum/`, `/slayer/` and
+  `/ai-trees/`. The site titles itself "New World Private-Server". Observed 2026-09-10.
+
+`/spectrum/` publishes retail-vs-current-build replication diffs from an internal tool
+(`traffic-spectrum-diff r1`), frame-binned over channel-1 server-to-client StateBundle traffic.
+Its metric key names `alc_rows`, `action_rows`, `sequence_only_rows` and `abs_rows` ("ALC rows
+with `world_pos.abs`"), which independently corroborates our ALC static analysis. `/completeness/`
+is a per-action evidence ledger over a 235-capture corpus; it holds no position or transform entry
+and its movement tab contains only local input and unscanned swimming items.
+
+No license, no terms of use and no `robots.txt`: `/robots.txt`, `/about/` and `/terms/` all return
+the root page. Treat the site as all rights reserved. Both pages state that their databases,
+ledgers and capture files are internal and that only reviewed source labels and aggregate metrics
+are published. Do not copy the published tables, nor extract the payload embedded in the page
+HTML, into this repository: the compilation is a database under art. 102-bis LDA (dir. 96/9/CE
+art. 7) and no permission to reuse a substantial part of it exists. Cite derived facts instead, as
+done here.
+
+`github.com/ratbuddy/nw-sim`, referenced by the Discord decode notes, no longer exists (HTTP 404
+on 2026-09-10); the public `ratbuddy` account lists no New World server-simulation repository.
+
 ## Other useful upstreams
 
 - nw-buddy: https://github.com/giniedp/nw-buddy and https://www.nw-buddy.de/
