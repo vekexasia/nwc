@@ -27,6 +27,7 @@ import code
 import os
 import re
 import sys
+import time
 from pathlib import Path
 
 DEFAULT_GHIDRA = Path.home() / ".local/share/ghidra/ghidra_12.1.3_PUBLIC"
@@ -46,12 +47,35 @@ def find_jdk() -> Path:
     raise SystemExit("JDK 21 not found; set JAVA_HOME to a Java 21 installation")
 
 
+def wait_for_project_slot():
+    """A Ghidra project allows one session at a time: queue on a lock file instead of failing."""
+    import fcntl
+    path = os.environ.get("NW_GHIDRA_LOCK", "/tmp/nw-ghidra.lock")
+    handle = open(path, "w")
+    deadline = time.monotonic() + float(os.environ.get("NW_GHIDRA_LOCK_WAIT", "600"))
+    waited = False
+    while True:
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            if waited:
+                print(f"project slot acquired after waiting")
+            return handle
+        except OSError:
+            if not waited:
+                print(f"waiting for the Ghidra project lock (another session holds it, {path})")
+                waited = True
+            if time.monotonic() > deadline:
+                raise SystemExit("timed out waiting for the Ghidra project lock")
+            time.sleep(1.0)
+
+
 def start_ghidra():
     ghidra = Path(os.environ.get("GHIDRA_INSTALL_DIR", DEFAULT_GHIDRA))
     if not (ghidra / "support/analyzeHeadless").exists():
         raise SystemExit(f"GHIDRA_INSTALL_DIR does not look like a Ghidra install: {ghidra}")
     os.environ["GHIDRA_INSTALL_DIR"] = str(ghidra)
     os.environ["_JAVA_OPTIONS"] = f"-Duser.home={Path(os.environ.get('NW_GHIDRA_HOME', Path.home() / '.cache/nw-ghidra'))}"
+    slot = wait_for_project_slot()
     from pyghidra.launcher import HeadlessPyGhidraLauncher
 
     launcher = HeadlessPyGhidraLauncher(verbose=False, install_dir=ghidra)
@@ -61,9 +85,18 @@ def start_ghidra():
     from ghidra.base.project import GhidraProject
 
     project_dir = Path(os.environ.get("NW_GHIDRA_PROJECT", Path.home() / "ghidra-projects"))
-    project = GhidraProject.openProject(str(project_dir), "nw", False)
+    deadline = time.monotonic() + float(os.environ.get("NW_GHIDRA_LOCK_WAIT", "600"))
+    while True:
+        try:
+            project = GhidraProject.openProject(str(project_dir), "nw", False)
+            break
+        except Exception as error:  # another session (possibly one that ignores the flock) holds it
+            if time.monotonic() > deadline:
+                raise SystemExit(f"project still locked after waiting: {error}")
+            print("project locked by another session, retrying in 2 s")
+            time.sleep(2)
     program = project.openProgram("/", os.environ.get("NW_GHIDRA_PROGRAM", "NewWorld.exe"), True)
-    return project, program
+    return project, program, slot
 
 
 def build_namespace(project, program):
@@ -210,7 +243,7 @@ def main(argv=None) -> int:
     parser.add_argument("--script", type=Path, help="run this python file with the helpers in scope")
     args = parser.parse_args(argv)
 
-    project, program = start_ghidra()
+    project, program, slot = start_ghidra()
     namespace = build_namespace(project, program)
     try:
         if args.script:
@@ -224,6 +257,10 @@ def main(argv=None) -> int:
     finally:
         try:
             project.close()
+        except Exception:
+            pass
+        try:
+            slot.close()
         except Exception:
             pass
     return 0
