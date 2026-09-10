@@ -14,6 +14,7 @@ YouTube integration and offline protocol experiments. English only.
 - [Offline position experiment](docs/Network/offline-position-proof.md): the original rejection-first diagnostic, superseded by the decoders below.
 - [ALC protocol reference](docs/Network/alc-protocol-reference.md): message layers, readers, the 48 ALC fields and the world position encoding.
 - [Decoder state snapshot](docs/Network/decoder-state.md): where the decoding stands, artifacts, next steps and gotchas.
+- [Ghidra workflow](docs/Network/ghidra-workflow.md): measured costs, batching, and the PyGhidra session wrapper.
 - [External references and attribution](docs/REFERENCES.md).
 - [Workspace handoff](docs/HANDOFF.md): completed background-workflow import and current deployment.
 

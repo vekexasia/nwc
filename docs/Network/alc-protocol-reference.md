@@ -510,6 +510,8 @@ Driving the game from the outside:
 | `decode_alc_state.py` | record payload -> the 63 ALC fields with values (see 2.4); `test_decode_alc_state.py` checks it |
 | `probe_framing.py`, `probe_type_ids.py`, `probe_registry_static.py`, `probe_position_hunt.py`, `probe_position_candidates.py` | offline probes kept from earlier steps |
 | `ghidra/Sweep.java` | headless Ghidra script: disassemble a window, create the function, decompile |
+| `ghidra/SchemaTable.java`, `ghidra/Ping.java` | property table of a schema builder in one run; project-open timing probe |
+| `ghidra/nw_ghidra.py` | PyGhidra session: one project open, then `table()`, `decompile()`, `strings()`, `xrefs()` in seconds ([ghidra-workflow.md](ghidra-workflow.md)) |
 
 Ghidra setup in use: Ghidra 12.1.3 with JDK 21 (`ghidra-headless` wrapper), project
 `~/ghidra-projects/nw`, program `NewWorld.exe` imported **without** auto-analysis; `VA = 0x140000000
