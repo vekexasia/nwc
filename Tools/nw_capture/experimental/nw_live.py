@@ -31,6 +31,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE / "offline"))
+from decode_alc_state import decode_record_payload  # noqa: E402
 from decode_vitals import parse_members  # noqa: E402  the shared, verified payload model
 
 HERE_PAGE = HERE / "nw_live.html"
@@ -204,6 +205,17 @@ class LiveState:
                 slot["mana"] = round(decoded["mana"], 2)
                 self.counters["mana"] += 1
 
+    def stamina_deficit(self, key: str, value: float) -> None:
+        """ALC group0.bit37: a half float that is 0 at rest and -2/-5/-7 after sprint or dodge.
+
+        It is the only stamina-related value on the wire we decode. It is coarse: the smooth in-game
+        bar is not replicated, so this is shown as what it is, a deficit code, not as the bar.
+        """
+        with self.lock:
+            slot = self._slot(key)
+            slot["stamina_deficit"] = value
+            slot["stamina_at"] = time.time()
+
     def player(self, key: str, name: str, character_id: str) -> None:
         with self.lock:
             slot = self._slot(key)
@@ -322,6 +334,18 @@ def apply_line(line: str, state: LiveState) -> None:
                 state.skip()
             else:
                 state.position(key, position)
+    elif kind == "join_samples":      # only the ALC stamina code; position and names have their own shapes
+        for item in items:
+            if len(item) < 7 or item[3] != 11:
+                continue
+            fields, used = decode_record_payload(bytes.fromhex(item[6]), 0)
+            if fields is None or used != item[5]:
+                continue
+            for bit, name, chunk, _value in fields:
+                if name == "group0.bit37" and len(chunk) == 2:
+                    value = struct.unpack(">e", chunk)[0]
+                    if math.isfinite(value):
+                        state.stamina_deficit(f"e{item[1]}", round(value, 2))
     elif kind == "vitals_samples":
         for item in items:
             if len(item) < 3:
@@ -545,6 +569,15 @@ def self_check() -> int:
         blob = json.dumps(state3.snapshot(), allow_nan=False)      # must not raise
         assert "NaN" not in blob and "Infinity" not in blob, blob
         assert state3.snapshot()["objects"]["0xnan"].get("mana") == 12.5, state3.snapshot()
+
+        # the ALC stamina code rides on join_samples: mask f3 80 00 80 03 sets bits 0,1,10,26,27,28 only, so a
+        # payload with bit 37 needs a mask that carries it; the 22-byte reference payload does not, and
+        # a join item of another type must be ignored
+        state10 = LiveState()
+        state10.me_path = Path(tmp) / "me10.json"
+        apply_line(json.dumps({"type": "join_samples", "items": [[1, 5, 16, 15, "0x0", 3, "010100"]]}), state10)
+        assert "stamina_deficit" not in state10.objects.get("e5", {}), state10.objects
+        assert struct.unpack(">e", bytes.fromhex("c500"))[0] == -5.0
 
         # entity keys use the verified join identity unless the user has chosen one
         state7 = LiveState()
