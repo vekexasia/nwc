@@ -38,7 +38,7 @@ from decode_cooldowns import parse_cooldowns  # noqa: E402
 from decode_mount import parse_mount  # noqa: E402
 from decode_pose import pose_from_payload  # noqa: E402
 from decode_stamina import parse_stamina  # noqa: E402
-from decode_vitals import parse_members  # noqa: E402  the shared, verified payload model
+from decode_vitals import parse_full_state, parse_members  # noqa: E402  the shared, verified payload model
 
 HERE_PAGE = HERE / "nw_live.html"
 sys.path.insert(0, str(HERE.parents[1] / "nw_assets"))
@@ -523,7 +523,13 @@ def apply_line(line: str, state: LiveState) -> None:
                 if decoded:
                     state.mount(f"e{item[1]}", decoded)
             elif item[3] == 15 and item[6][2:4] == "ff" and int(item[6][:2], 16) & 1 and item[5] >= 10:
-                state.kind(f"e{item[1]}", struct.unpack(">f", bytes.fromhex(item[6][12:20]))[0] > 0)
+                full = parse_full_state(bytes.fromhex(item[6]))
+                player = struct.unpack(">f", bytes.fromhex(item[6][12:20]))[0] > 0
+                state.kind(f"e{item[1]}", player)
+                if full:
+                    # mobs: the base max is the max; players: the live max sits above it (gear, attributes)
+                    state.info(f"e{item[1]}", level=full.get("level"),
+                               health_max=None if player else full["health_base_max"], health_base_max=full["health_base_max"])
                 if NAMES:
                     state.tags(f"e{item[1]}", "vitals_ids", book_hits(item[6], ("vitals", "gatherables")), keep=2)
             elif item[3] == 899 and item[6][:4] in ("0101", "0301") and item[5] >= 6:

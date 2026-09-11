@@ -86,6 +86,32 @@ def parse_members(payload: bytes):
     return out if index == len(payload) else out
 
 
+def parse_full_state(payload: bytes):
+    """The Vitals full state (member 0 with field mask ff, then a second ff mask byte for fields 8..15).
+
+    Read across players, pets and mobs of one capture (docs/NEXT_SESSION.md 2026-09-11 night):
+
+        0..1   member mask (01 or 03 for the owner), field mask ff
+        2..5   f32 health                      6..9   f32 100/110 on players, 0 on pets and mobs
+        10     u8   11 u8 (0b)                 12..19 u64 (a time stamp)
+        20..23 u32  24..25 u16  26 u8          27     second field mask, ff
+        28     u8                              29..32 f32 HealthBaseMax: equals the max health of every
+                                                       mob checked (Grey Wolf 609, Turkey 16, Boar 639,
+                                                       Withered 548); for players the live max is above it
+        33..34 u16  35..38 f32 (100 players, 1.0 mobs: mana base max)  39..41 three u8
+        42..45 vitalsId crc32, 46..49 vitalsCategoryId crc32 (mobs; players carry 'Player' + 4 bytes)
+        50..53 u32 vitalsLevel, 54..55 u16 flags (mobs only: 56-byte payloads)
+    """
+    if len(payload) < 42 or payload[1] != 0xFF or payload[27] != 0xFF or not payload[0] & 1:
+        return {}
+    out = {"health": struct.unpack(">f", payload[2:6])[0], "field1": struct.unpack(">f", payload[6:10])[0],
+           "health_base_max": struct.unpack(">f", payload[29:33])[0], "vitals_id": payload[42:46].hex()}
+    if len(payload) == 56:
+        out["vitals_category_id"] = payload[46:50].hex()
+        out["level"] = struct.unpack(">I", payload[50:54])[0]
+    return out if all(math.isfinite(v) for v in (out["health"], out["health_base_max"])) else {}
+
+
 def samples(log_path: Path, per_object: bool = True):
     """Yield (ts, object, health, payload) for every payload that carries the health field."""
     out = collections.defaultdict(list) if per_object else []
@@ -145,6 +171,8 @@ def self_check() -> int:
     assert "health" not in parse_members(nan_health), "a NaN health must not be decoded as a value"
     assert round(9954.2 - 9896.5, 1) == 57.7      # the heal the player saw as +57
     assert round(9954.2 - 9591.8, 1) == 362.4     # the drain the player saw as 362
+    wolf = parse_full_state(bytes.fromhex("01ff4418400000000000000bb0f5d4ffcea7c90000000000000000ff004418400000003f8000004f0000d69ee7124f97b6a8000000060261"))   # Grey Wolf e159, live3 log
+    assert wolf and wolf["health_base_max"] == 609.0 and wolf["level"] == 6 and wolf["vitals_id"] == "d69ee712", wolf
     print("self-check ok: quattro payload verificati e i due delta di riferimento")
     return 0
 
