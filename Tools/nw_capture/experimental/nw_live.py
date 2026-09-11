@@ -48,6 +48,21 @@ except Exception:                     # noqa: BLE001 - the book is optional
     NAMES = {}
 
 
+def book_hits(payload_hex: str, sheet_prefixes: tuple) -> list:
+    """Datasheet ids found as 4-byte crc32 windows in a payload, restricted to sheets we expect.
+
+    ponytail: a window scan, not a field decode; with 265k ids the chance of a stray match per window
+    is 6e-5, and the sheet filter cuts what is left. Decode the field tables when a false name shows.
+    """
+    raw = bytes.fromhex(payload_hex)
+    found = []
+    for index in range(len(raw) - 3):
+        entry = NAMES.get(raw[index:index + 4].hex())
+        if entry and entry["sheet"].startswith(sheet_prefixes) and entry["id"] not in found:
+            found.append(entry["id"])
+    return found
+
+
 def name_of(crc_hex: str) -> str:
     """Short readable form of a datasheet id: 'Ability_VoidGauntlet_Scream' -> 'VoidGauntlet Scream'."""
     entry = NAMES.get(crc_hex)
@@ -293,6 +308,17 @@ class LiveState:
         with self.lock:
             self._slot(key)["interacting"] = active
 
+    def tags(self, key: str, field: str, ids: list, keep: int = 8) -> None:
+        """Ids read through the name book: vitals row (what a mob is), items worn, status effects."""
+        with self.lock:
+            slot = self._slot(key)
+            current = slot.setdefault(field, [])
+            for value in ids:
+                if value in current:
+                    current.remove(value)
+                current.append(value)
+            del current[:-keep]
+
     def mount(self, key: str, decoded: dict) -> None:
         """MountComponentReplicatedState: mounted flag (owner and remote shapes) and mount stamina."""
         with self.lock:
@@ -469,6 +495,16 @@ def apply_line(line: str, state: LiveState) -> None:
                     state.mount(f"e{item[1]}", decoded)
             elif item[3] == 15 and item[6][2:4] == "ff" and int(item[6][:2], 16) & 1 and item[5] >= 10:
                 state.kind(f"e{item[1]}", struct.unpack(">f", bytes.fromhex(item[6][12:20]))[0] > 0)
+                if NAMES:
+                    state.tags(f"e{item[1]}", "vitals_ids", book_hits(item[6], ("vitals", "gatherables")), keep=2)
+            elif item[3] == 3183 and NAMES:
+                weapons = [i for i in book_hits(item[6], ("itemdefinitions_",)) if i[:2].lower() in ("1h", "2h")]
+                if weapons:
+                    state.tags(f"e{item[1]}", "weapons", weapons, keep=4)
+            elif item[3] == 4236 and NAMES:
+                effects = book_hits(item[6], ("statuseffects",))
+                if effects:
+                    state.tags(f"e{item[1]}", "effects", effects, keep=12)
             elif item[3] == 2930 and item[5] == 3 and item[6][:4] == "0101":
                 state.interacting(f"e{item[1]}", item[6][4:6] == "01")
     elif kind == "vitals_samples":

@@ -117,6 +117,7 @@
     <div class="dim" style="font-size:12px" id="mountText"></div>
     <div class="dim" style="font-size:12px" id="hudPos"></div>
     <div class="dim" style="font-size:11px; font-family: var(--mono)" id="hudLayers"></div>
+    <div class="dim" style="font-size:11px" id="hudGear"></div>
     <button id="asMe" style="display:none; margin-top:6px" title="tell the server this entity is you">this is me</button>
   </div>
 </div>
@@ -253,7 +254,8 @@ function draw() {
       ctx.strokeStyle = "#2a2622"; ctx.lineWidth = 1 * r;
       ctx.beginPath(); ctx.arc(lx, ly, 9 * r, 0, Math.PI * 2); ctx.stroke();
     }
-    const slot = objects[key] || {}, name = k === "me" ? (slot.name || "you") : (k === "animal" && slot.name ? `${slot.name}'s companion` : slot.name);
+    const slot = objects[key] || {}, kindName = (slot.vitals_ids || [])[0];
+    const name = k === "me" ? (slot.name || "you") : (k === "animal" && slot.name ? `${slot.name}'s companion` : (slot.name || (kindName && view.scale >= 0.5 ? kindName : null)));
     const pose = poseText(slot);
     if (name && (k === "me" || view.scale >= 0.3)) labels.push([lx, ly, pose ? `${name} · ${pose}` : name, k]);
   }
@@ -408,6 +410,9 @@ function render(snapshot) {
       `<b>${left > 0 ? left.toFixed(1) + "s" : "ready"}</b></div>`;
   }).join("") || '<div class="note" style="font-size:11px">cooldowns: none seen yet (they arrive when an ability is used)</div>';
   $("stNote").textContent = shown.winded_s > 0 ? "winded" : (shown.regen_delay_s > 0 ? "regen delay" : "");
+  $("hudGear").textContent = [(shown.weapons || []).length ? "weapons: " + shown.weapons.join(", ") : "",
+    (shown.effects || []).length ? "effects: " + shown.effects.slice(-6).join(", ") : "", shown.level ? `level ${shown.level}` : "",
+    shown.faction ? `faction ${shown.faction}` : ""].filter(Boolean).join("  ·  ");
   $("mountText").textContent = shown.mounted ? `mounted${shown.mount_stamina != null ? ", horse stamina " + shown.mount_stamina : ""}` : "";
   $("hudPos").textContent = shown.position ? `x ${shown.position.x}  y ${shown.position.y}  elev ${shown.position.elevation ?? shown.position.elev_raw} m` : "";
   // the four slayer layers as the wire has them: state id (hex) and sequence id, so an unknown one can be reported
@@ -428,7 +433,7 @@ function render(snapshot) {
   $("rows").innerHTML = rows.map(([key, slot]) => {
     const age = Math.max(slot.position_at || 0, slot.vitals_at || 0), p = slot.position || {};
     const cls = (key === selected ? "me" : (slot.npc && slot.name ? "animal" : (slot.name ? "named" : ""))) + (key === focused ? " focused" : "") + (stale(key) ? " stale" : "");
-    return `<tr class="${cls}" data-key="${key}"><td>${key}</td><td>${slot.name ? (slot.npc ? `<span class="dim">${slot.name}'s companion</span>` : slot.name) : '<span class="dim">?</span>'}</td><td class="dim">${poseText(slot)}</td>` +
+    return `<tr class="${cls}" data-key="${key}"><td>${key}</td><td title="${(slot.weapons || []).join(", ")}">${slot.name ? (slot.npc ? `<span class="dim">${slot.name}'s companion</span>` : slot.name) : `<span class="dim">${(slot.vitals_ids || [])[0] || "?"}</span>`}${slot.level ? ` <span class="dim">${slot.level}</span>` : ""}</td><td class="dim">${poseText(slot)}</td>` +
       `<td class="num">${slot.health ?? "-"}</td><td class="num">${p.x ?? "-"}</td><td class="num">${p.y ?? "-"}</td>` +
       `<td class="num">${age ? (now - age).toFixed(0) + "s" : "-"}</td></tr>`;
   }).join("");
