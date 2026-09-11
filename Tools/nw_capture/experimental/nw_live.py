@@ -31,7 +31,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE / "offline"))
-from decode_alc_state import decode_record_payload  # noqa: E402
+from decode_stamina import parse_stamina  # noqa: E402
 from decode_vitals import parse_members  # noqa: E402  the shared, verified payload model
 
 HERE_PAGE = HERE / "nw_live.html"
@@ -234,16 +234,19 @@ class LiveState:
             except Exception:
                 pass
 
-    def stamina_deficit(self, key: str, value: float) -> None:
-        """ALC group0.bit37: a half float that is 0 at rest and -2/-5/-7 after sprint or dodge.
-
-        It is the only stamina-related value on the wire we decode. It is coarse: the smooth in-game
-        bar is not replicated, so this is shown as what it is, a deficit code, not as the bar.
-        """
+    def stamina(self, key: str, decoded: dict) -> None:
+        """StaminaComponentReplicatedState: the bar itself, about 60 Hz while it moves."""
         with self.lock:
             slot = self._slot(key)
-            slot["stamina_deficit"] = value
             slot["stamina_at"] = time.time()
+            if "stamina" in decoded:
+                slot["stamina"] = round(decoded["stamina"], 1)
+                self.counters["stamina"] = self.counters.get("stamina", 0) + 1
+            if "stamina_max" in decoded:
+                slot["stamina_max"] = decoded["stamina_max"]
+            for name in ("winded_s", "regen_delay_s"):
+                if name in decoded:
+                    slot[name] = decoded[name]
 
     def player(self, key: str, name: str, character_id: str) -> None:
         with self.lock:
@@ -363,18 +366,13 @@ def apply_line(line: str, state: LiveState) -> None:
                 state.skip()
             else:
                 state.position(key, position)
-    elif kind == "join_samples":      # only the ALC stamina code; position and names have their own shapes
+    elif kind == "join_samples":      # only the stamina state; position, vitals and names have their own shapes
         for item in items:
-            if len(item) < 7 or item[3] != 11:
+            if len(item) < 7 or item[3] != 4297 or len(item[6]) != 2 * item[5]:
                 continue
-            fields, used = decode_record_payload(bytes.fromhex(item[6]), 0)
-            if fields is None or used != item[5]:
-                continue
-            for bit, name, chunk, _value in fields:
-                if name == "group0.bit37" and len(chunk) == 2:
-                    value = struct.unpack(">e", chunk)[0]
-                    if math.isfinite(value):
-                        state.stamina_deficit(f"e{item[1]}", round(value, 2))
+            decoded = parse_stamina(bytes.fromhex(item[6]))
+            if decoded:
+                state.stamina(f"e{item[1]}", decoded)
     elif kind == "vitals_samples":
         for item in items:
             if len(item) < 3:
@@ -618,14 +616,13 @@ def self_check() -> int:
         state12.vitals("e1", {"health": 8000.0})
         assert state12.objects["e1"]["health_max"] == 10519.7, state12.objects["e1"]
 
-        # the ALC stamina code rides on join_samples: mask f3 80 00 80 03 sets bits 0,1,10,26,27,28 only, so a
-        # payload with bit 37 needs a mask that carries it; the 22-byte reference payload does not, and
-        # a join item of another type must be ignored
+        # the stamina state rides on join_samples (typeIndex 4297); other types there are ignored
         state10 = LiveState()
         state10.me_path = Path(tmp) / "me10.json"
-        apply_line(json.dumps({"type": "join_samples", "items": [[1, 5, 16, 15, "0x0", 3, "010100"]]}), state10)
-        assert "stamina_deficit" not in state10.objects.get("e5", {}), state10.objects
-        assert struct.unpack(">e", bytes.fromhex("c500"))[0] == -5.0
+        apply_line(json.dumps({"type": "join_samples", "items": [
+            [1, 5, 16, 15, "0x0", 3, "010100"],
+            [2, 5, 62, 4297, "0x0", 10, "0109425c00003f800000"]]}), state10)
+        assert state10.objects["e5"]["stamina"] == 55.0 and state10.objects["e5"]["regen_delay_s"] == 1.0, state10.objects
 
         # entity keys use the verified join identity unless the user has chosen one
         state7 = LiveState()

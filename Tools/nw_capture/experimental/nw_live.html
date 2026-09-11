@@ -76,7 +76,7 @@
     aside.closed { max-height: none; }
     #drawerToggle { display: inline-block; float: right; }
     #hud { min-width: 0; right: 12px; max-width: none; }
-    #hud .bar.stamina, #hud .bar.extra { display: none; }
+    #hud .bar.extra { display: none; }
     #tools { top: 50px; left: 12px; right: 12px; flex-wrap: wrap; max-width: none; }
     #status { max-width: calc(100% - 24px); }
     .card { padding: 8px 10px; }
@@ -98,8 +98,7 @@
     <h1 id="hudName">no player yet <small id="hudKey"></small></h1>
     <div class="bar health"><div class="label"><span>health</span><b id="hpText">-</b></div><div class="track"><div class="fill" id="hpFill" style="width:0"></div></div></div>
     <div class="bar mana"><div class="label"><span>mana</span><b id="mpText">-</b></div><div class="track"><div class="fill" id="mpFill" style="width:0"></div></div></div>
-    <div class="bar stamina"><div class="label"><span>stamina</span><b id="stText">-</b></div><div class="track"><div class="fill" id="stFill" style="width:0"></div></div>
-      <div class="note" style="font-size:11px">the server sends only a coarse deficit code (0, -2, -5, -7); the smooth bar in the game is client-side</div></div>
+    <div class="bar stamina"><div class="label"><span>stamina <span class="note" id="stNote"></span></span><b id="stText">-</b></div><div class="track"><div class="fill" id="stFill" style="width:0"></div></div></div>
     <div class="bar extra"><div class="label"><span>cooldowns, potions</span><span class="note">not on the wire we decode</span></div></div>
     <div class="dim" style="font-size:12px" id="hudPos"></div>
     <button id="asMe" style="display:none; margin-top:6px" title="tell the server this entity is you">this is me</button>
@@ -350,9 +349,8 @@ function render(snapshot) {
   $("hudKey").textContent = focused && focused !== selected ? `${focused}, following` :
     (selected ? `${selected}, you${meInfo.method ? ", " + meInfo.method : ""}${meInfo.stale ? ", stale" : ""}` : "");
   bar("hp", shown.health, "health", shown.health_max); bar("mp", shown.mana, "mana", shown.mana_max);
-  const deficit = shown.stamina_deficit;
-  $("stText").textContent = deficit == null ? "-" : (deficit === 0 ? "full" : `deficit ${deficit}`);
-  $("stFill").style.width = deficit == null ? "0" : `${Math.max(0, 100 + deficit * 100 / 7)}%`;   // -7 was the deepest code seen
+  bar("st", shown.stamina, "stamina", shown.stamina_max || 100);
+  $("stNote").textContent = shown.winded_s > 0 ? "winded" : (shown.regen_delay_s > 0 ? "regen delay" : "");
   $("hudPos").textContent = shown.position ? `x ${shown.position.x}  y ${shown.position.y}  elev(raw) ${shown.position.elev_raw}` : "";
 
   now = (snapshot && snapshot.now) || Date.now() / 1000;
