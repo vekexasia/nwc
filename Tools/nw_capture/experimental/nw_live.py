@@ -63,6 +63,11 @@ class LiveState:
         self.auto_debug: dict = {}
         self.last_auto = 0.0
         self.me_path = Path(os.environ.get("NW_LIVE_ME", "/tmp/nwc/nw_live_me.json"))
+        self.max_path = self.me_path.with_name("nw_live_max.json")
+        try:
+            self.maxima = json.loads(self.max_path.read_text())
+        except Exception:
+            self.maxima = {}
         if self.me_path.exists():
             try:
                 loaded = json.loads(self.me_path.read_text())
@@ -201,9 +206,25 @@ class LiveState:
             if "health" in decoded:
                 slot["health"] = round(decoded["health"], 1)
                 self.counters["health"] += 1
+                self._remember_max(key, slot, "health")
             if "mana" in decoded:
                 slot["mana"] = round(decoded["mana"], 2)
                 self.counters["mana"] += 1
+                self._remember_max(key, slot, "mana")
+
+    # ponytail: HealthMax is a Vitals member we have not decoded (members 7..12), so the bar's ceiling
+    # is the highest value seen, kept across server restarts in a small file keyed by entity key.
+    def _remember_max(self, key: str, slot: dict, what: str) -> None:
+        field = what + "_max"
+        best = max(slot.get(field) or 0.0, self.maxima.get(key, {}).get(field, 0.0), slot[what])
+        if best != slot.get(field):
+            slot[field] = best
+            self.maxima.setdefault(key, {})[field] = best
+            try:
+                self.max_path.parent.mkdir(parents=True, exist_ok=True)
+                self.max_path.write_text(json.dumps(self.maxima))
+            except Exception:
+                pass
 
     def stamina_deficit(self, key: str, value: float) -> None:
         """ALC group0.bit37: a half float that is 0 at rest and -2/-5/-7 after sprint or dodge.
@@ -569,6 +590,17 @@ def self_check() -> int:
         blob = json.dumps(state3.snapshot(), allow_nan=False)      # must not raise
         assert "NaN" not in blob and "Infinity" not in blob, blob
         assert state3.snapshot()["objects"]["0xnan"].get("mana") == 12.5, state3.snapshot()
+
+        # the bar ceiling is the highest value seen and survives a restart
+        state11 = LiveState()
+        state11.me_path = Path(tmp) / "me11.json"; state11.max_path = Path(tmp) / "max11.json"; state11.maxima = {}
+        state11.vitals("e1", {"health": 10519.7}); state11.vitals("e1", {"health": 8071.0})
+        assert state11.objects["e1"]["health_max"] == 10519.7, state11.objects["e1"]
+        state12 = LiveState()
+        state12.me_path = Path(tmp) / "me12.json"; state12.max_path = Path(tmp) / "max11.json"
+        state12.maxima = json.loads(state12.max_path.read_text())
+        state12.vitals("e1", {"health": 8000.0})
+        assert state12.objects["e1"]["health_max"] == 10519.7, state12.objects["e1"]
 
         # the ALC stamina code rides on join_samples: mask f3 80 00 80 03 sets bits 0,1,10,26,27,28 only, so a
         # payload with bit 37 needs a mask that carries it; the 22-byte reference payload does not, and

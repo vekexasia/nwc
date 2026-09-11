@@ -134,7 +134,7 @@ const MAX_POINTS = 4000, MAX_LEG = 25, STALE_S = 90;   // an entity silent for S
 let now = Date.now() / 1000;
 const ageOf = slot => now - Math.max(slot.position_at || 0, slot.vitals_at || 0);
 const stale = key => { const slot = objects[key]; return !slot || (ageOf(slot) > STALE_S && key !== selected); };
-const trails = new Map(), tiles = new Map(), maxSeen = { health: 0, mana: 0 };
+const trails = new Map(), tiles = new Map();
 let objects = {}, selected = "", focused = "", meInfo = {};   // selected = identity (server), focused = what the view follows
 const view = { centre: [9300 * PX, -2700 * PX], scale: 0.5, follow: true, showOthers: true };
 
@@ -315,11 +315,11 @@ $("identify").onclick = async e => {
 };
 
 // ------------------------------------------------------------------ state
-function bar(prefix, value, key) {
+function bar(prefix, value, key, ceiling) {
   if (value == null) { $(prefix + "Text").textContent = "-"; $(prefix + "Fill").style.width = "0"; return; }
-  maxSeen[key] = Math.max(maxSeen[key], value);
-  $(prefix + "Text").textContent = `${value} / ${maxSeen[key]}`;
-  $(prefix + "Fill").style.width = `${Math.min(100, 100 * value / (maxSeen[key] || 1))}%`;
+  const max = Math.max(ceiling || 0, value);               // the server remembers the highest value seen
+  $(prefix + "Text").textContent = `${value} / ${max}`;
+  $(prefix + "Fill").style.width = `${Math.min(100, 100 * value / (max || 1))}%`;
 }
 
 function render(snapshot) {
@@ -344,7 +344,7 @@ function render(snapshot) {
   $("asMe").style.display = focused && focused !== selected ? "inline-block" : "none";
   $("hudKey").textContent = focused && focused !== selected ? `${focused}, following` :
     (selected ? `${selected}, you${meInfo.method ? ", " + meInfo.method : ""}${meInfo.stale ? ", stale" : ""}` : "");
-  bar("hp", shown.health, "health"); bar("mp", shown.mana, "mana");
+  bar("hp", shown.health, "health", shown.health_max); bar("mp", shown.mana, "mana", shown.mana_max);
   const deficit = shown.stamina_deficit;
   $("stText").textContent = deficit == null ? "-" : (deficit === 0 ? "full" : `deficit ${deficit}`);
   $("stFill").style.width = deficit == null ? "0" : `${Math.max(0, 100 + deficit * 100 / 7)}%`;   // -7 was the deepest code seen
