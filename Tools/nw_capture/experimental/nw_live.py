@@ -559,16 +559,16 @@ def apply_line(line: str, state: LiveState) -> None:
                 decoded = parse_stamina(bytes.fromhex(item[6]))
                 if "stamina" in decoded:
                     state.info(f"e{item[1]}", mana=round(decoded["stamina"], 1), mana_max=decoded.get("stamina_max"))
-            elif item[3] == 129 and item[6][:4] == "010f" and item[5] >= 46:
-                # AttributeComponent: u32 count then (id u32, points u32) pairs, ids 4..0. The id order
-                # STR, DEX, INT, FOC, CON follows the attribute datasheets; the player's 225 on id 3 sits
-                # with a life staff + void gauntlet kit, which is a Focus build.
+            elif item[3] == 129 and item[6][:4] == "010f" and item[5] >= 42:
+                # AttributeComponent full state: five (points u32, id u32) pairs, ids 4..0, then a u8.
+                # There is no count: read as count + (id, value) the fifth value fell on a varint and
+                # STR came out as 7 or garbage (50 records of the player: 5, 5, 225, 5, 5 on ids 4..0).
+                # Id order STR, DEX, INT, FOC, CON as in the attribute datasheets; the 225 sits on id 2.
                 raw = bytes.fromhex(item[6])
-                count = struct.unpack_from("<I", raw, 2)[0]
-                if count == 5 and len(raw) >= 6 + 8 * count:
-                    pairs = [struct.unpack_from("<II", raw, 6 + 8 * i) for i in range(count)]
+                pairs = [struct.unpack_from("<II", raw, 2 + 8 * i) for i in range(5)]
+                if [i for _, i in pairs] == [4, 3, 2, 1, 0]:
                     names = ("STR", "DEX", "INT", "FOC", "CON")
-                    state.info(f"e{item[1]}", attributes={names[i]: v for i, v in pairs if i < 5})
+                    state.info(f"e{item[1]}", attributes={names[i]: v for v, i in pairs})
             elif item[3] == 13 and item[5] >= 10 and item[6][:2] == "01" and int(item[6][2:4], 16) & 3 == 3:
                 x, y = struct.unpack(">ff", bytes.fromhex(item[6][4:20]))
                 state.position_static(f"e{item[1]}", x, y)
@@ -928,10 +928,10 @@ def self_check() -> int:
             [3, 36, 62, 1652, "0x0", 18, "010f42c8000042c80000000000003f800000"], [4, 36, 49, 3152, "0x0", 3, "040201"]]}), state15)
         e36 = state15.objects["e36"]
         assert e36["level"] == 65 and e36["faction"] == 3 and e36["mana"] == 100.0 and e36["mana_max"] == 100.0, e36
-        apply_line(json.dumps({"type": "join_samples", "items": [[5, 36, 1, 129, "0x0", 92,
-            "010f05000000" + "0400000005000000" + "03000000e1000000" + "0200000005000000" + "0100000005000000" + "0000000005000000"
-            + "01b41e000001b41e05000000" + "00" * 34]]}), state15)
-        assert state15.objects["e36"]["attributes"] == {"CON": 5, "FOC": 225, "INT": 5, "DEX": 5, "STR": 5}, state15.objects["e36"]
+        apply_line(json.dumps({"type": "join_samples", "items": [[5, 36, 1, 129, "0x0", 100,
+            "010f05000000040000000500000003000000e10000000200000005000000010000000500000000000000070001a90a000001a90a05"
+            + "0000000000000000000000000000000000000000000000ee01000200000003000000dc000000000000000200000002"]]}), state15)
+        assert state15.objects["e36"]["attributes"] == {"STR": 5, "DEX": 5, "INT": 225, "FOC": 5, "CON": 5}, state15.objects["e36"]
 
         # a static position stays until an ALC one arrives, and never overrides one
         apply_line(json.dumps({"type": "join_samples", "items": [[1, 41, 1, 13, "0x0", 15, "0103460ab2be4582dc881d0603ff09"], [2, 41, 0, 12, "0x0", 3, "010108"]]}), state15)

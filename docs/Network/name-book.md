@@ -57,9 +57,11 @@ at 50 and two flag bytes at 54 on the 56-byte mob payload. The property names
 ProgressionComponent 899: member 0 bit 0 u32 = level minus one (the player read 69 for level-70 characters; 12 -> 1,066 hp).
 FactionComponent 3152: member 2 bit 0 u8 = faction id; `javelindata_factiondata` rows Faction1..3
 carry `FactionIntro_Syndicate/Marauders/Covenant_Recruitment`, so 1 Syndicate, 2 Marauders, 3 Covenant.
-AttributeComponent 129: `01 0f`, u32 count 5, then (id u32, points u32) pairs, ids 4..0; the attribute
-sheets are ordered STR, DEX, INT, FOC, CON and the player's 225 sat on id 3 with a life staff + void
-gauntlet kit (Focus).
+AttributeComponent 129: `01 0f`, then five (points u32, id u32) pairs, ids 4..0, then a u8 (5..7 seen).
+There is no count: read as count + (id, points) the fifth value fell on a varint and STR came out as 7
+or worse; on 50 records of the player the pairs read 5, 5, 225, 5, 5 on ids 4..0. With the attribute
+sheets ordered STR, DEX, INT, FOC, CON the 225 is on id 2 (INT); the id-to-attribute order is still
+the datasheet order, not proven by the wire (ask the player which attribute holds 225).
 ManaComponent 1652 and StaminaComponent 4297 share one shape: six f32 BE in bit order (amount, max,
 winded countdown, regen delay, two multipliers).
 StatMultiplierTable 1525: `06 07`, then (u16 stat id, u32 basis points) entries, 10000 = 1.0x; a
