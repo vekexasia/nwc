@@ -50,6 +50,8 @@ class LiveState:
     def __init__(self) -> None:
         self.lock = threading.Lock()
         self.objects: dict[str, dict] = {}
+        self.me: dict = {"object": None, "method": None}
+        self.calibration: dict | None = None   # {"until": ts, "started": ts, "moved": {key: distance}}
         self.counters = {"position": 0, "health": 0, "mana": 0, "player": 0, "lines": 0, "skipped": 0}
         self.started = time.time()
         self.last_line_at: float | None = None
@@ -59,8 +61,39 @@ class LiveState:
 
     def position(self, key: str, position: dict) -> None:
         with self.lock:
+            previous = self._slot(key).get("position")
             self._slot(key).update({"position": position, "position_at": time.time()})
             self.counters["position"] += 1
+            window = self.calibration
+            if window is not None and previous is not None:
+                step = abs(position["x"] - previous["x"]) + abs(position["y"] - previous["y"])
+                if step < 500:      # a teleport or a bad read is not a step
+                    window["moved"][key] = window["moved"].get(key, 0.0) + step
+
+    def start_calibration(self, seconds: float = 3.0) -> None:
+        """Watch the next seconds of movement: the object that walks is the player."""
+        with self.lock:
+            self.calibration = {"started": time.time(), "until": time.time() + seconds, "moved": {}}
+
+    def finish_calibration(self) -> dict:
+        with self.lock:
+            window = self.calibration
+            self.calibration = None
+            if window is None:
+                return dict(self.me)
+            moved = sorted(window["moved"].items(), key=lambda kv: -kv[1])
+            if not moved or moved[0][1] < 3.0:
+                return {"object": self.me.get("object"), "method": None,
+                        "note": "no object moved more than 3 units: nothing identified"}
+            best = moved[0][0]
+            margin = moved[0][1] / moved[1][1] if len(moved) > 1 and moved[1][1] > 1e-6 else None
+            self.me = {"object": best, "method": "walk", "distance": round(moved[0][1], 1),
+                       "margin_over_next": None if margin is None else round(margin, 2)}
+            return dict(self.me)
+
+    def calibration_active(self) -> bool:
+        with self.lock:
+            return self.calibration is not None and time.time() < self.calibration["until"]
 
     def vitals(self, key: str, decoded: dict) -> None:
         with self.lock:
@@ -96,6 +129,9 @@ class LiveState:
                 "uptime_s": round(time.time() - self.started, 1),
                 "last_line_age_s": None if self.last_line_at is None else round(time.time() - self.last_line_at, 2),
                 "counters": dict(self.counters),
+                "me": dict(self.me),
+                # inside the lock already: calibration_active() would take it again
+                "calibrating": self.calibration is not None and time.time() < self.calibration["until"],
                 "objects": {k: v for k, v in sorted(self.objects.items())},
             }
 
@@ -202,6 +238,19 @@ def make_handler(state: LiveState):
         def log_message(self, *args):    # quiet
             pass
 
+        def do_POST(self):
+            if self.path.startswith("/calibrate"):
+                state.start_calibration(3.0)
+                time.sleep(3.2)
+                body = json.dumps(state.finish_calibration()).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            else:
+                self.send_error(404)
+
         def do_GET(self):
             if self.path.startswith("/state"):
                 body = json.dumps(state.snapshot()).encode()
@@ -257,8 +306,25 @@ def self_check() -> int:
             handle.write(']]}\n')
         time.sleep(0.3)
         assert abs(state.snapshot()["objects"]["0xabc"]["mana"] - 64.1) < 0.1, state.snapshot()
+        # calibration: the object that walks is the one that moved most, and the margin is reported
+        state2 = LiveState()
+        state2.start_calibration(10.0)
+        state2.position("0xwalker", {"x": 100.0, "y": 100.0, "elev_raw": 1})
+        state2.position("0xidle", {"x": 500.0, "y": 500.0, "elev_raw": 1})
+        for step in range(1, 7):
+            state2.position("0xwalker", {"x": 100.0 + 5 * step, "y": 100.0, "elev_raw": 1})
+            state2.position("0xidle", {"x": 500.0 + 0.2 * step, "y": 500.0, "elev_raw": 1})
+        picked = state2.finish_calibration()
+        assert picked["object"] == "0xwalker", picked
+        assert picked["distance"] == 30.0, picked
+        assert picked["margin_over_next"] and picked["margin_over_next"] > 10, picked
+        # when nothing moves the previous identification is kept, and the run says so
+        state2.start_calibration(10.0)
+        state2.position("0xidle", {"x": 500.0, "y": 500.0, "elev_raw": 1})
+        quiet = state2.finish_calibration()
+        assert quiet["object"] == "0xwalker" and quiet["note"], quiet
         stop.set()
-    print("self-check ok: tail, position, health, mana, name, and a partial line held back")
+    print("self-check ok: tail, position, health, mana, name, partial line, and the walk calibration")
     return 0
 
 

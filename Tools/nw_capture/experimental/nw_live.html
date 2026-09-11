@@ -28,7 +28,8 @@
     <b>New World live</b>
     <span class="dim" id="status">starting</span>
     <span class="dim" id="counters"></span>
-    <label class="dim">me: <select id="me"><option value="">(pick your object)</option></select></label>
+    <button id="identify">identify me: walk 3s</button>
+    <span class="dim" id="meLabel">me: not identified</span>
     <a id="maplink" class="dim" href="#" target="_blank">community map</a>
   </header>
   <div id="canvasWrap"><canvas id="canvas"></canvas></div>
@@ -54,7 +55,24 @@ let lastCounters = null;
 
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
-const meSelect = document.getElementById("me");
+document.getElementById("identify").onclick = async (event) => {
+  event.target.disabled = true;
+  event.target.textContent = "walk now (3s)...";
+  try {
+    const result = await (await fetch("/calibrate", { method: "POST" })).json();
+    selected = result.object || "";
+    if (selected) {
+      document.getElementById("meLabel").textContent =
+        `me: ${selected.slice(0, 12)} (moved ${result.distance ?? "?"} units, ${result.margin_over_next ?? "?"}x the next)`;
+    } else {
+      document.getElementById("meLabel").textContent = "me: " + (result.note || "nothing identified");
+    }
+  } catch (error) {
+    document.getElementById("meLabel").textContent = "me: calibration failed";
+  }
+  event.target.disabled = false;
+  event.target.textContent = "identify me: walk 3s";
+};
 
 function fit() {
   const box = canvas.parentElement.getBoundingClientRect();
@@ -127,7 +145,7 @@ function render(snapshot) {
   for (const row of document.querySelectorAll("#rows tr")) {
     row.onclick = () => { selected = row.dataset.key; localStorage.setItem("nw.live.me", selected); syncSelect(objects); };
   }
-  syncSelect(objects);
+  if (selected) document.getElementById("meLabel").textContent = `me: ${selected.slice(0, 12)}`;
   const me = objects[selected];
   const link = document.getElementById("maplink");
   if (me && me.position) {
@@ -142,17 +160,6 @@ function render(snapshot) {
   lastCounters = snapshot.counters;
   draw(objects);
 }
-
-function syncSelect(objects) {
-  const keys = Object.keys(objects);
-  if (meSelect.dataset.keys !== keys.join(",")) {
-    meSelect.dataset.keys = keys.join(",");
-    meSelect.innerHTML = `<option value="">(pick your object)</option>` +
-      keys.map(k => `<option value="${k}" ${k === selected ? "selected" : ""}>${(objects[k].name || "?") + " " + k.slice(0, 10)}</option>`).join("");
-  }
-  meSelect.value = selected;
-}
-meSelect.addEventListener("change", () => { selected = meSelect.value; localStorage.setItem("nw.live.me", selected); });
 
 async function poll() {
   try {
