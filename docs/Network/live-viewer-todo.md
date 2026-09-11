@@ -8,7 +8,7 @@ Tick an item only when it shows in the page from a live capture.
 |---|---|---|---|
 | 1 | pose / action label (idle, walk, run, dodge, sprint, attack, weapon out) | ALC `slayerStateId` layers 0 and 1, table in [pose-state.md](pose-state.md) | done, `511ed84` |
 | 2 | facing arrow on the marker | ALC `rotation`, smallest-three quaternion (`FUN_14087a8d0`), heading = yaw + 90 checked on two walks | done |
-| 3 | damage feed (dealt / taken) | `DamageReceiverComponentReplicatedState` 1528 | todo |
+| 3 | damage feed (taken, per entity) | Vitals health deltas. `DamageReceiverComponent` 1528 turned out to be flags (`01 03 00 00 00 00 20/34/37`, `01 01 00/01`), not events; the per-hit RMI `OnDamageDealt` is a channel-0 message our probe does not log | done, from Vitals |
 | 4 | mob names on the grey markers | `PlayerNameTagComponentReplicatedState` 100 | todo |
 | 5 | mounted yes/no | `MountComponentReplicatedState` 5620 | todo |
 | 6 | equipment / weapon of nearby players | `PaperdollComponentReplicatedState` 3183 | todo |

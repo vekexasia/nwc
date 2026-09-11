@@ -77,6 +77,7 @@ class LiveState:
                     self.me = loaded          # survives a server restart; the id holds while the game runs
             except Exception:
                 pass
+        self.feed: list[dict] = []      # health changes, newest last: the damage feed
         self.calibration: dict | None = None   # {"until": ts, "started": ts, "moved": {key: distance}}
         self.counters = {"position": 0, "health": 0, "mana": 0, "player": 0, "lines": 0, "skipped": 0}
         self.started = time.time()
@@ -169,6 +170,7 @@ class LiveState:
         with self.lock:
             dropped = len(self.objects)
             self.objects.clear()
+            self.feed.clear()
             self.calibration = None
             return {"dropped": dropped}
 
@@ -214,9 +216,14 @@ class LiveState:
             slot["vitals_at"] = time.time()
             decoded = {k: v for k, v in decoded.items() if math.isfinite(v)}
             if "health" in decoded:
+                previous = slot.get("health")
                 slot["health"] = round(decoded["health"], 1)
                 self.counters["health"] += 1
                 self._remember_max(key, slot, "health")
+                if previous is not None and abs(slot["health"] - previous) >= 0.5:
+                    self.feed.append({"at": time.time(), "key": key, "name": slot.get("name"),
+                                      "delta": round(slot["health"] - previous, 1), "health": slot["health"]})
+                    del self.feed[:-60]
             if "mana" in decoded:
                 slot["mana"] = round(decoded["mana"], 2)
                 self.counters["mana"] += 1
@@ -366,6 +373,7 @@ class LiveState:
                 # inside the lock already: calibration_active() would take it again
                 "calibrating": self.calibration is not None and time.time() < self.calibration["until"],
                 "objects": {k: v for k, v in sorted(self.objects.items())},
+                "feed": self.feed[-30:],
             }
 
 
@@ -637,6 +645,14 @@ def self_check() -> int:
         state13.me_path = Path(tmp) / "me13.json"; state13.max_path = Path(tmp) / "max13.json"; state13.maxima = {}
         state13.player("e1", "Tester", "id"); state13.me = {"object": "e1", "method": "picked"}
         assert state13.reset() == {"dropped": 1} and not state13.objects and state13.me["object"] == "e1"
+
+        # every health change is a feed entry with its delta
+        state14 = LiveState()
+        state14.me_path = Path(tmp) / "me14.json"; state14.max_path = Path(tmp) / "max14.json"; state14.maxima = {}
+        state14.player("e9", "Kaneda", "id")
+        state14.vitals("e9", {"health": 1042.5}); state14.vitals("e9", {"health": 680.5}); state14.vitals("e9", {"health": 680.5})
+        assert [f["delta"] for f in state14.feed] == [-362.0] and state14.feed[0]["name"] == "Kaneda", state14.feed
+        assert state14.snapshot()["feed"] == state14.feed
 
         # the bar ceiling is the highest value seen and survives a restart
         state11 = LiveState()

@@ -33,6 +33,10 @@
   #status { top: 12px; left: 12px; font-size: 12px; color: var(--ink-soft); }
   #status b { color: var(--ink); font-weight: 600; letter-spacing: 0.02em; }
   #hud { left: 12px; bottom: 12px; min-width: 260px; }
+  #feed { right: 12px; bottom: 12px; font-size: 12px; max-height: 40%; overflow: hidden; padding: 6px 10px; min-width: 200px; }
+  #feed div { display: flex; justify-content: space-between; gap: 10px; }
+  #feed b { font-family: var(--mono); font-weight: normal; }
+  #feed .hit { color: var(--me); } #feed .heal { color: var(--ok); }
   #tools { top: 12px; right: 12px; display: flex; gap: 6px; padding: 6px; }
   h1 { font-size: 15px; margin: 0 0 4px; font-weight: 600; letter-spacing: 0.02em; }
   h1 small { font-weight: normal; color: var(--ink-soft); font-size: 12px; margin-left: 6px; }
@@ -82,6 +86,7 @@
     aside.closed { max-height: none; }
     #drawerToggle { display: inline-block; float: right; }
     #hud { min-width: 0; right: 12px; max-width: none; }
+    #feed { display: none; }
     #tools { top: 50px; left: 12px; right: 12px; flex-wrap: wrap; max-width: none; }
     #status { max-width: calc(100% - 24px); }
     .card { padding: 8px 10px; }
@@ -99,6 +104,7 @@
     <button id="others" class="on" title="show unnamed entities">others</button>
     <button id="reset" title="forget every entity and trail (a new game session reuses the keys)">reset</button>
   </div>
+  <div class="card" id="feed"></div>
   <div class="card" id="hud">
     <h1 id="hudName">no player yet <small id="hudKey"></small></h1>
     <div class="bar health"><div class="label"><span>health</span><b id="hpText">-</b></div><div class="track"><div class="fill" id="hpFill" style="width:0"></div></div></div>
@@ -361,6 +367,11 @@ function render(snapshot) {
       if (!last || last.x !== slot.position.x || last.y !== slot.position.y) trail.push(slot.position);
       while (trail.length > MAX_POINTS) trail.shift();
     }
+    const feed = (snapshot.feed || []).slice(-14).reverse();
+    $("feed").innerHTML = feed.length ? feed.map(f => {
+      const who = f.key === selected ? "you" : (f.name || f.key), age = Math.max(0, snapshot.now - f.at);
+      return `<div><span>${who}</span><b class="${f.delta < 0 ? "hit" : "heal"}">${f.delta > 0 ? "+" : ""}${f.delta}</b><span class="dim">${age.toFixed(0)}s</span></div>`;
+    }).join("") : '<span class="dim">damage feed: no health change yet</span>';
     const age = snapshot.last_line_age_s, status = $("statusText");
     status.textContent = age == null ? "no data yet" : (age > 5 ? `no capture running, last line ${age}s ago` : `live, ${age}s`);
     status.className = age == null || age > 5 ? "warn" : "";
