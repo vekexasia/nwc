@@ -32,6 +32,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE / "offline"))
 from decode_cooldowns import parse_cooldowns  # noqa: E402
+from decode_pose import pose_from_payload  # noqa: E402
 from decode_stamina import parse_stamina  # noqa: E402
 from decode_vitals import parse_members  # noqa: E402  the shared, verified payload model
 
@@ -235,6 +236,16 @@ class LiveState:
             except Exception:
                 pass
 
+    def pose(self, key: str, layers: dict) -> None:
+        """ALC slayer state ids: layer 0 locomotion, layer 1 weapon, only when a record carries one."""
+        with self.lock:
+            slot = self._slot(key)
+            table = slot.setdefault("pose", {})
+            for layer, value in layers.items():
+                table[str(layer)] = value["name"]
+            slot["pose_at"] = time.time()
+            self.counters["pose"] = self.counters.get("pose", 0) + len(layers)
+
     def cooldowns(self, key: str, entries: list) -> None:
         """CooldownTimersComponentReplicatedState deltas: one (id, start, expiry) per slot."""
         with self.lock:
@@ -381,7 +392,11 @@ def apply_line(line: str, state: LiveState) -> None:
         for item in items:
             if len(item) < 7 or len(item[6]) != 2 * item[5]:
                 continue
-            if item[3] == 4297:
+            if item[3] == 11:
+                # only records that carry a state id; the position of the same record is in pos_samples
+                if (layers := pose_from_payload(bytes.fromhex(item[6]))):
+                    state.pose(f"e{item[1]}", layers)
+            elif item[3] == 4297:
                 decoded = parse_stamina(bytes.fromhex(item[6]))
                 if decoded:
                     state.stamina(f"e{item[1]}", decoded)
@@ -643,6 +658,12 @@ def self_check() -> int:
             [3, 5, 41, 2932, "0x0", 27, "010101011b0fa51101a0260002fe31ed13a78b0002fe31eba6f914"]]}), state10)
         cd = state10.objects["e5"]["cooldowns"]["0"]
         assert cd["id"] == "1b0fa511" and abs(cd["expiry"] - cd["start"] - 23.9) < 0.01, cd
+        # a real poseA record (11:47:00.7, jump): groupMask 1, mask with bits 0,1,13,14,15,26,27,28 -> the label
+        from encode_alc_state import encode_mask_varint
+        mask = encode_mask_varint((1 << 0) | (1 << 1) | (1 << 13))
+        record = (bytes([0x01]) + mask + bytes([0x4b, 0x1c, 0x0e])).hex()
+        apply_line(json.dumps({"type": "join_samples", "items": [[4, 5, 16, 11, "0x0", len(record) // 2, record]]}), state10)
+        assert state10.objects["e5"]["pose"] == {"0": "jump"}, state10.objects["e5"]
 
         # entity keys use the verified join identity unless the user has chosen one
         state7 = LiveState()

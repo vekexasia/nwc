@@ -118,7 +118,7 @@
   </header>
   <div id="tableWrap">
     <table>
-      <thead><tr><th>entity</th><th>name</th><th class="num">health</th><th class="num">x</th><th class="num">y</th><th class="num">age</th></tr></thead>
+      <thead><tr><th>entity</th><th>name</th><th>pose</th><th class="num">health</th><th class="num">x</th><th class="num">y</th><th class="num">age</th></tr></thead>
       <tbody id="rows"></tbody>
     </table>
   </div>
@@ -231,8 +231,9 @@ function draw() {
       ctx.strokeStyle = "#2a2622"; ctx.lineWidth = 1 * r;
       ctx.beginPath(); ctx.arc(lx, ly, 9 * r, 0, Math.PI * 2); ctx.stroke();
     }
-    const name = k === "me" ? (objects[key].name || "you") : (objects[key] && objects[key].name);
-    if (name && (k === "me" || view.scale >= 0.3)) labels.push([lx, ly, name, k]);
+    const slot = objects[key] || {}, name = k === "me" ? (slot.name || "you") : slot.name;
+    const pose = poseText(slot);
+    if (name && (k === "me" || view.scale >= 0.3)) labels.push([lx, ly, pose ? `${name} · ${pose}` : name, k]);
   }
   ctx.font = `${12 * r}px ${getComputedStyle(document.body).getPropertyValue("--serif")}`;
   ctx.textBaseline = "middle";
@@ -324,6 +325,12 @@ $("identify").onclick = async e => {
 };
 
 // ------------------------------------------------------------------ state
+function poseText(slot) {           // layer 0 is locomotion, layer 1 the weapon; idle alone says nothing worth ink
+  const p = slot.pose || {}, parts = [];
+  if (p["0"] && p["0"] !== "idle") parts.push(p["0"]);
+  if (p["1"] && p["1"] !== "weapon out") parts.push(p["1"]); else if (p["1"] === "weapon out" && !parts.length) parts.push("weapon out");
+  return parts.join(", ");
+}
 function bar(prefix, value, key, ceiling) {
   if (value == null) { $(prefix + "Text").textContent = "-"; $(prefix + "Fill").style.width = "0"; return; }
   const max = Math.max(ceiling || 0, value);               // the server remembers the highest value seen
@@ -363,7 +370,8 @@ function render(snapshot) {
       `<b>${left > 0 ? left.toFixed(1) + "s" : "ready"}</b></div>`;
   }).join("") || '<div class="note" style="font-size:11px">cooldowns: none seen yet (they arrive when an ability is used)</div>';
   $("stNote").textContent = shown.winded_s > 0 ? "winded" : (shown.regen_delay_s > 0 ? "regen delay" : "");
-  $("hudPos").textContent = shown.position ? `x ${shown.position.x}  y ${shown.position.y}  elev(raw) ${shown.position.elev_raw}` : "";
+  $("hudPos").textContent = (shown.position ? `x ${shown.position.x}  y ${shown.position.y}  elev(raw) ${shown.position.elev_raw}` : "") +
+    (shown.pose ? `   ·  ${shown.pose["0"] || "?"} / ${shown.pose["1"] || "-"}` : "");
 
   now = (snapshot && snapshot.now) || Date.now() / 1000;
   const rows = Object.entries(objects).filter(([key, slot]) => slot.position || slot.name || slot.health != null)
@@ -377,7 +385,7 @@ function render(snapshot) {
   $("rows").innerHTML = rows.map(([key, slot]) => {
     const age = Math.max(slot.position_at || 0, slot.vitals_at || 0), p = slot.position || {};
     const cls = (key === selected ? "me" : (slot.name ? "named" : "")) + (key === focused ? " focused" : "") + (stale(key) ? " stale" : "");
-    return `<tr class="${cls}" data-key="${key}"><td>${key}</td><td>${slot.name || '<span class="dim">?</span>'}</td>` +
+    return `<tr class="${cls}" data-key="${key}"><td>${key}</td><td>${slot.name || '<span class="dim">?</span>'}</td><td class="dim">${poseText(slot)}</td>` +
       `<td class="num">${slot.health ?? "-"}</td><td class="num">${p.x ?? "-"}</td><td class="num">${p.y ?? "-"}</td>` +
       `<td class="num">${age ? (now - age).toFixed(0) + "s" : "-"}</td></tr>`;
   }).join("");
