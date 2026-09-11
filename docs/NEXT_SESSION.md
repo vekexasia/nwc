@@ -494,3 +494,25 @@ Next: (1) decode the prefix-varint values in the pose timeline as integers; (2) 
 mount, swim, and the same actions with a second weapon (are L1 ids per weapon?); (3) the asset side,
 `slayerStateId` -> slayer script -> clip via nw-buddy; (4) frame/Carrier/DTLS encoders on top of the
 record encoder, then the heartbeat server, only with explicit authorization.
+
+## Update 2026-09-11 (evening): the viewer got its factors, and two states the wire does carry
+
+Corrections to earlier claims in this file: **stamina is on the wire** (`StaminaComponentReplicatedState`
+4297, six f32 BE fields, 60 Hz while it moves) and **cooldowns are on the wire**
+(`CooldownTimersComponentReplicatedState` 2932: per slot id, revision, expiry and start in microseconds
+since 2000-01-01 UTC). Both were in our join logs all along; the community catalog
+(`capture-triage.html`) is where to look first for "which state carries X". `serialize.json` does not
+list replicated states, only components and their asset/config fields.
+
+Live viewer (`nw_live.py` / `nw_live.html`, paper style, pan/zoom/follow, reset, mobile layout): position,
+names, health (max = highest seen, kept in `/tmp/nwc/nw_live_max.json`), mana, stamina with `winded`
+and `regen delay`, cooldown slots, pose label (ALC slayer ids, layers 0 and 1), facing wedge (ALC
+`rotation`, smallest-three quaternion, heading = yaw + 90), elevation in metres, damage feed from the
+Vitals deltas. Tiles were one tile too far south before today; fixed against aeternum-map's
+`getTileUrl`. Checklist and what is blocked: `docs/Network/live-viewer-todo.md` (mob names and
+equipment need the item/spawn datasheets; HealthMax is not replicated; mount flag awaits one driven
+mount).
+
+Operational: a background capture ignores SIGINT (shell background jobs), so a running capture cannot
+be stopped early without orphaning the Frida agent; wait for its timeout or restart the game. `pkill
+-f` with a pattern that appears in the calling command line kills the caller: bracket one character.
