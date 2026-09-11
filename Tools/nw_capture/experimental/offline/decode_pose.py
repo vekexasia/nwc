@@ -20,11 +20,15 @@ LAYER_NAMES = {
     0: {0x1f: "idle", 0x1a: "walking", 0x0d: "running", 0x0b: "dodge", 0x07: "sprint",
         0x0c: "landing", 0x1b: "stopping", 0x0e: "jump",
         # observed by the player on the live page with the weapon held at 14:37 (ids are per weapon script)
-        0x0a: "attack", 0x08: "ability", 0x09: "gathering"},
+        0x0a: "attack", 0x08: "ability", 0x09: "gathering",
+        # the player's own mount at 20:45:42 (live 201741): OnSummonMountPending, 0x14 -> 0x17 -> 0x0f,
+        # ShowDismountNotification, weapon layer 0 throughout
+        0x14: "mounting", 0x17: "mounted", 0x0f: "dismounting"},
     1: {0x2c: "drawing weapon", 0x2d: "weapon out", 0x21: "light attack", 0x27: "heavy attack",
         0x24: "ability", 0x25: "block", 0x29: "fishing"},
     2: {0x2e: "attacking"},                 # set only while an attack runs (poseB)
-    3: {0x20: "dead"},                      # entered as the player's health hit 0 (live3 14:04:23)
+    # 0x0c came with the first OnDamage hits taken (20:45:22), 0x0d as health went 952 -> 0 (20:45:25)
+    3: {0x20: "dead", 0x0c: "hit", 0x0d: "dying"},
 }
 # group0.bit43 is a stance byte: 0x80 crouched, 0x40 prone, 0x09 the base seen standing (crouch and
 # prone are sequences inside the idle state, not state changes, so the state id alone misses them)

@@ -45,13 +45,17 @@ time -> first frame with the new state (the hook stamps arrive 0.1-0.15 s after 
 | L3 | `0x20` (32) | dead: entered in the same frame the player's health went 56 -> 0 (14:04:23), again at a later death | live3 |
 | L3 | `0x4f` (79), `0x11`, `0x18` | around a death and the respawn, unnamed | live3 14:04:05, 14:45-14:47 |
 | L0 | `0x18` (24) | unnamed, the most frequent unknown: 1287 transitions on 17 players, speed 0, mostly mounted | census live3 |
+| L0 | `0x14` (20) -> `0x17` (23) -> `0x0f` (15) | the player's own mount: `MountComponentClientFacet_OnSummonMountPending` at 20:45:42.1, `0x14` at 42.4, `0x17` at 43.2, `0x0f` at 43.9, `ShowDismountNotification`, idle at 44.9; L1 = 0 from `0x14` to `0x17` | live 201741 20:45:42 |
+| L3 | `0x0c` (12), `0x0d` (13) | `0x0c` in the frame of the first six `OnDamage` hits taken (20:45:22.4); `0x0d` as health went 952 -> 141 -> 0 (20:45:25.1); L0 `running` and L1 0 on the respawn 0.4 s later | live 201741 |
+| L1 | `0x2b` (43) | unnamed: 1.0 s at 20:45:39.3, back to `weapon out`, no paperdoll or cooldown chunk with it | live 201741 |
+| L1 | `0x23` (35) | likely the weapon swap: 1.1 s at 20:51:29.4 with a `PaperdollComponent` member-4 delta in the same frame (the same delta shape as on death, when the weapon leaves the hands); the frequency in the census (1111 transitions) fits | live 201741 |
 | L1 | `0x2c` (44) | `1` pressed: weapon draw, sequence `0x881d`, 0.7 s | poseA 11:47:16.2 (key 16.05) |
 | L1 | `0x2d` (45) | weapon ready; re-entered with sequence 0 and a new `slayerStateIdStarted` on each cast (`q`, `r`) and after every attack | poseA 11:47:16.9, actions2 08:22:39.2 / 42.2, alchit, poseB |
 | L1 + L2 | `0x21` (33), seq `0x61`; L2 `0x2e` seq `0xa006` | left click (light attack): 0.9 s, then L1 back to `0x2d` and L2 to 0 | poseB 11:49:54.2, 11:50:01.0 |
 | L1 | `0x27` (39), seq `0x60` | left held 1.2 s (heavy attack): follows `0x21`, 0.6 s, then `0x2d` | poseB 11:50:01.8 |
 | L1 + L2 | `0x24` (36), seq `0x8142` -> `0x9842` -> `0x9142`; L2 `0x2e` seq `0x9806` | right held 2 s (weapon RMB ability): sequence advances while held, `0x2d` on release | poseB 11:50:08.8 - 10.9 |
 | L1 | `0x25` (37) | block (player's observation with the weapon held at 14:39); census: 221 transitions on 12 players, moving at 3.3 u/s while in it | live3 14:39 |
-| L1 | `0x23` (35), `0x00` | unnamed, frequent (1111 and 1324 transitions); `0x00` is likely "no weapon layer" | census live3 |
+| L1 | `0x00` | no weapon layer: seen while mounted, on death and during the swap | census live3, live 201741 |
 
 Attack, ability and block ids are **per weapon script**: with the morning weapon the attacks sat on L1
 (`0x21`, `0x27`, `0x24`), with the 14:37 weapon on L0 (`0x0a`, `0x08`). The table names what was seen,
