@@ -37,7 +37,7 @@ sys.path.insert(0, str(HERE / "offline"))
 from decode_cooldowns import parse_cooldowns  # noqa: E402
 from decode_mount import parse_mount  # noqa: E402
 from decode_pose import pose_from_payload  # noqa: E402
-from decode_rmi import parse_chat, parse_chat_batch  # noqa: E402
+from decode_rmi import parse_chat, parse_chat_batch, parse_damage_dealt, parse_damage_taken  # noqa: E402
 from decode_stamina import parse_stamina  # noqa: E402
 from decode_vitals import parse_full_state, parse_members  # noqa: E402  the shared, verified payload model
 
@@ -268,7 +268,8 @@ class LiveState:
                 slot["health"] = round(decoded["health"], 1)
                 self.counters["health"] += 1
                 self._remember_max(key, slot, "health")
-                if previous is not None and abs(slot["health"] - previous) >= 0.5:
+                # the player's own hits come exact from the OnDamage RMI; state deltas cover everyone else
+                if previous is not None and abs(slot["health"] - previous) >= 0.5 and key != "e1":
                     self.feed.append({"at": time.time(), "key": key, "name": slot.get("name"),
                                       "delta": round(slot["health"] - previous, 1), "health": slot["health"]})
                     del self.feed[:-60]
@@ -363,6 +364,12 @@ class LiveState:
             if decoded.get("mounted") is False:
                 slot.pop("mount_name", None)      # "on X" only while riding
             slot["mount_at"] = time.time()
+
+    def hit(self, entry: dict) -> None:
+        """A per-hit damage RMI: exact amounts, unlike the health deltas sampled from state."""
+        with self.lock:
+            self.feed.append({"at": time.time(), **entry})
+            del self.feed[:-200]
 
     def chat(self, message: dict) -> None:
         with self.lock:
@@ -592,6 +599,16 @@ def apply_line(line: str, state: LiveState) -> None:
             elif item[1] == 293:
                 for message in parse_chat_batch(bytes.fromhex(item[2])):
                     state.chat(message)
+            elif item[1] == 3601:
+                taken = parse_damage_taken(bytes.fromhex(item[2]))
+                if taken:
+                    state.hit({"key": "e1", "delta": -round(sum(e["amount"] for e in taken["entries"])),
+                               "types": [e["type"] for e in taken["entries"]]})
+            elif item[1] == 2071:
+                dealt = parse_damage_dealt(bytes.fromhex(item[2]))
+                if dealt and dealt["entries"]:
+                    state.hit({"key": "dealt", "name": "you hit", "delta": -round(sum(e["amount"] for e in dealt["entries"])),
+                               "types": [e["type"] for e in dealt["entries"]], "dot": dealt["attack"] == "0" * 16})
     elif kind == "vitals_samples":
         for item in items:
             if len(item) < 3:
@@ -929,6 +946,10 @@ def self_check() -> int:
             "515ac85acc363edc31df13d046e908f82433643331383031302d623431362d346230622d386266372d366565323532313836643664"
             "085065746157617474020000000000046369616f00000000000000000000011137363536313139393532323337343831380103"]]}), state17)
         assert state17.snapshot()["chat"][0]["text"] == "ciao" and state17.snapshot()["chat"][0]["name"] == "PetaWatt", state17.chat_log
+        apply_line(json.dumps({"type": "rmi_samples", "items": [[1, 2071,
+            "fea3936321dfc8b931df13d046e908f8c45391666544b3fd990779b848b78ee4fdb34465669153c4b171e15b7545ea13200002054490da403f2aec560e43c455f53f2dc11a"],
+            [2, 3601, "fc65cc3aebb909fc31df13d046e908f8fdb34465669153c422003d0e40134611e0a24531fef7429df16d010543a7ba103ef9b7f8"]]}), state17)
+        assert [f["delta"] for f in state17.feed] == [-1552, -336], state17.feed
 
         # every health change is a feed entry with its delta
         state14 = LiveState()

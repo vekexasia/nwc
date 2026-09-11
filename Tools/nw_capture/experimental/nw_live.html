@@ -37,7 +37,7 @@
   #feed { right: 12px; bottom: 12px; font-size: 12px; max-height: 40%; overflow: hidden; padding: 6px 10px; min-width: 200px; }
   #feed div { display: flex; justify-content: space-between; gap: 10px; }
   #feed b { font-family: var(--mono); font-weight: normal; }
-  #feed .hit { color: var(--me); } #feed .heal { color: var(--ok); }
+  #feed .hit { color: var(--me); } #feed .heal { color: var(--ok); } #feed .dealt { color: var(--ink); }
   #feed .chat span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 300px; }
   #feed .chat b { font-family: var(--serif); }
   #feed hr { border: 0; border-top: 1px solid var(--rule); margin: 4px 0; }
@@ -401,7 +401,8 @@ function render(snapshot) {
       `<div class="chat"><span><b>${esc(c.name)}</b> ${esc(c.text)}</span><span class="dim">${Math.max(0, snapshot.now - c.at).toFixed(0)}s</span></div>`).join("") + "<hr>" : "") +
       (feed.length ? feed.map(f => {
         const who = f.key === selected ? "you" : (f.name || f.key), age = Math.max(0, snapshot.now - f.at);
-        return `<div><span>${esc(who)}</span><b class="${f.delta < 0 ? "hit" : "heal"}">${f.delta > 0 ? "+" : ""}${f.delta}</b><span class="dim">${age.toFixed(0)}s</span></div>`;
+        const kind = f.key === "dealt" ? "dealt" : (f.delta < 0 ? "hit" : "heal"), types = f.types ? ` <span class="dim">t${f.types.join("+")}${f.dot ? " dot" : ""}</span>` : "";
+        return `<div><span>${esc(who)}${types}</span><b class="${kind}">${f.delta > 0 ? "+" : ""}${f.delta}</b><span class="dim">${age.toFixed(0)}s</span></div>`;
       }).join("") : '<span class="dim">damage feed: no health change yet</span>');
     const age = snapshot.last_line_age_s, status = $("statusText"), cap = snapshot.capture || {};
     const capText = cap.running ? `capture ${Math.round(snapshot.now - cap.since)}s / ${cap.seconds}s` : (cap.lock ? `capture held elsewhere: ${cap.lock}` : "no capture");

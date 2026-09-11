@@ -10,6 +10,7 @@ i.e. at the message body. Client-facet RMIs open with a 16-byte target uuid (nw_
 import argparse
 import json
 import re
+import struct
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -81,6 +82,49 @@ def parse_chat_batch(payload: bytes):
     return out
 
 
+def _entries(payload: bytes, index: int):
+    """count u8, then count x (damage type u8, amount f32, f32 still unread)."""
+    if index >= len(payload):
+        return None
+    count = payload[index]
+    index += 1
+    if len(payload) != index + count * 9:
+        return None
+    return [{"type": payload[i], "amount": round(struct.unpack(">f", payload[i + 1:i + 5])[0], 1),
+             "x": round(struct.unpack(">f", payload[i + 5:i + 9])[0], 4)}
+            for i in range(index, len(payload), 9)]
+
+
+def parse_damage_taken(payload: bytes):
+    """VitalsComponentClientFacet_OnDamage (3601), sent to the player's Vitals facet for every hit
+    taken: the receiver's id u64 (the player's, same value as the source in OnDamageDealt), flags u16
+    (0x2200, 0x0a00 seen), damage / player max health f32 (0.034729 = 335.45 / 9,659.16, exact), the
+    hit position xyz f32 (2 m from the player's ABS position), then the entries. Read on the player's
+    death at 20:45: 34 hits summing to 9,811 against 9,659 max health plus regen; the first six were
+    335.45 each and took health 9,659 -> 7,646."""
+    if len(payload) < 16 + 8 + 2 + 4 + 12 + 1:
+        return None
+    attacker = payload[16:24].hex()
+    flags = struct.unpack(">H", payload[24:26])[0]
+    fraction, x, y, z = struct.unpack(">ffff", payload[26:42])
+    entries = _entries(payload, 42)
+    if entries is None:
+        return None
+    return {"receiver": attacker, "flags": flags, "fraction": fraction, "pos": (round(x, 1), round(y, 1), round(z, 1)),
+            "entries": entries}
+
+
+def parse_damage_dealt(payload: bytes):
+    """DamageReceiverComponentClientFacet_OnDamageDealt (2071), sent to the player for hits the
+    player lands: source id u64 (the player's, byte-reversed), target id u64, source id again, an
+    attack/ability id u64 (zero for the 1 s ticks of a damage over time), flags u16, then the entries.
+    A weapon with an elemental gem lands two entries per hit (05 1158.8 and 0e 392.7)."""
+    if len(payload) < 16 + 32 + 2 + 1:
+        return None
+    return {"target": payload[24:32].hex(), "attack": payload[40:48].hex(),
+            "flags": struct.unpack(">H", payload[48:50])[0], "entries": _entries(payload, 50)}
+
+
 def samples(lines):
     for line in lines:
         if '"rmi_samples"' not in line:
@@ -127,6 +171,15 @@ def check():
                           "3731373734330103")
     messages = parse_chat_batch(batch)
     assert len(messages) == 1 and messages[0]["name"] == "CyderX.NT" and messages[0]["text"].startswith("+MYRK RUN"), messages
+    taken = parse_damage_taken(bytes.fromhex("fc65cc3aebb909fc31df13d046e908f8fdb34465669153c422003d0e40134611e0a24531fef7429df16d010543a7ba103ef9b7f8"))
+    assert taken["entries"] == [{"type": 5, "amount": 335.5, "x": 0.4877}] and taken["pos"] == (9336.2, 2847.9, 79.0), taken
+    assert abs(taken["fraction"] * 9659.158 - 335.45) < 0.1
+    dealt = parse_damage_dealt(bytes.fromhex("fea3936321dfc8b931df13d046e908f8c45391666544b3fd990779b848b78ee4fdb34465669153c4"
+                                             "b171e15b7545ea13200002054490da403f2aec560e43c455f53f2dc11a"))
+    assert dealt["target"] == "990779b848b78ee4" and [e["amount"] for e in dealt["entries"]] == [1158.8, 392.7], dealt
+    tick = parse_damage_dealt(bytes.fromhex("fea3936321dfc8b931df13d046e908f8c45391666544b3fd990779b848b78ee4fdb34465669153c4"
+                                            "00000000000000000002010342ab78843f2aec56"))
+    assert tick["attack"] == "0" * 16 and tick["entries"][0]["amount"] == 85.7, tick
     print("decode_rmi check ok")
 
 
