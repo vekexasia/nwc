@@ -25,8 +25,11 @@ names, player level (899), faction (3152: 1 Syndicate, 2 Marauders, 3 Covenant),
 damage feed, capture start/stop from the page.
 
 Still open: the numeric slayer state ids have no table in binary or assets
-([pose-state-names.md](pose-state-names.md)); `PositionInTheWorld` (13) for static entities (camps,
-gatherables) is not on the map yet; the Vitals full-state field table (HealthMax) is unmapped.
+([pose-state-names.md](pose-state-names.md)); the player's own HealthMax (the Vitals full state gives
+`HealthBaseMax`, exact for mobs, below the live max for players); StatMultiplierTable stat ids are an
+unnamed enum; per-hit damage needs the RMI census (`nw_rmi_probe.js`, untested). Static entities (13)
+are on the map as squares since `9306949`; the Vitals full state is read to the byte
+([name-book.md](name-book.md)).
 
 Method per item, the one that worked for stamina and cooldowns: (a) pull the player's chunks of that
 type from an existing join log, (b) read the shape by hand against a driven or known action, (c) a
