@@ -107,6 +107,8 @@ class LiveState:
         self.objects: dict[str, dict] = {}
         self.me: dict = {"object": None, "method": None}
         self.self_uuid: str | None = None   # PlayerManagerSelfIdentificationMsg: the character uuid
+        self.net_ids: dict[str, str] = {}   # OnDamageDealt target id (u64 hex) -> entity key, learned from health deltas
+        self.pending_dealt: list[tuple[float, float, str]] = []   # (at, amount, target id) awaiting a matching delta
 
         self.history: dict[str, list[tuple[float, float, float]]] = {}
         self.auto_strikes: dict[str, int] = {}
@@ -272,8 +274,17 @@ class LiveState:
                 self._remember_max(key, slot, "health")
                 # the player's own hits come exact from the OnDamage RMI; state deltas cover everyone else
                 if previous is not None and abs(slot["health"] - previous) >= 0.5 and key != "e1":
-                    self.feed.append({"at": time.time(), "key": key, "name": slot.get("name"),
-                                      "delta": round(slot["health"] - previous, 1), "health": slot["health"]})
+                    delta = round(slot["health"] - previous, 1)
+                    # a mob's health falling by exactly what the player just dealt names the target id;
+                    # no state chunk of the mob carries that u64 (only spells and the RMIs do)
+                    now = time.time()
+                    self.pending_dealt = [p for p in self.pending_dealt if now - p[0] < 2.0]
+                    for at, amount, target in self.pending_dealt:
+                        if abs(delta + amount) < 1.0:
+                            self.net_ids[target] = key
+                            self.pending_dealt.remove((at, amount, target))
+                            break
+                    self.feed.append({"at": now, "key": key, "name": slot.get("name"), "delta": delta, "health": slot["health"]})
                     del self.feed[:-60]
             if "mana" in decoded:
                 slot["mana"] = round(decoded["mana"], 2)
@@ -372,6 +383,16 @@ class LiveState:
         with self.lock:
             self.feed.append({"at": time.time(), **entry})
             del self.feed[:-200]
+            if entry.get("target"):
+                self.pending_dealt.append((time.time(), -entry["delta"], entry["target"]))
+                del self.pending_dealt[:-20]
+
+    def _with_target(self, entry: dict) -> dict:
+        key = self.net_ids.get(entry.get("target", ""))
+        if key is None:
+            return entry
+        slot = self.objects.get(key, {})
+        return {**entry, "target_key": key, "target_name": slot.get("name") or " ".join(slot.get("vitals_ids", [])[:1]) or key}
 
     def chat(self, message: dict) -> None:
         with self.lock:
@@ -499,7 +520,7 @@ class LiveState:
                 # inside the lock already: calibration_active() would take it again
                 "calibrating": self.calibration is not None and time.time() < self.calibration["until"],
                 "objects": {k: v for k, v in sorted(self.objects.items())},
-                "feed": self.feed[-30:],
+                "feed": [self._with_target(f) for f in self.feed[-30:]],
                 "chat": self.chat_log[-30:],
             }
 
@@ -614,7 +635,8 @@ def apply_line(line: str, state: LiveState) -> None:
             elif item[1] == 2071:
                 dealt = parse_damage_dealt(bytes.fromhex(item[2]))
                 if dealt and dealt["entries"]:
-                    state.hit({"key": "dealt", "name": "you hit", "delta": -round(sum(e["amount"] for e in dealt["entries"])),
+                    state.hit({"key": "dealt", "name": "you hit", "target": dealt["target"],
+                               "delta": -round(sum(e["amount"] for e in dealt["entries"])),
                                "types": [DAMAGE_TYPES.get(e["type"], str(e["type"])) for e in dealt["entries"]],
                                "dot": dealt["attack"] == "0" * 16})
     elif kind == "vitals_samples":
@@ -958,6 +980,10 @@ def self_check() -> int:
             "fea3936321dfc8b931df13d046e908f8c45391666544b3fd990779b848b78ee4fdb34465669153c4b171e15b7545ea13200002054490da403f2aec560e43c455f53f2dc11a"],
             [2, 3601, "fc65cc3aebb909fc31df13d046e908f8fdb34465669153c422003d0e40134611e0a24531fef7429df16d010543a7ba103ef9b7f8"]]}), state17)
         assert [f["delta"] for f in state17.feed] == [-1552, -336], state17.feed
+        # the mob whose health drops by the dealt amount is the target id
+        state17.vitals("e120", {"health": 5000.0}); state17.vitals("e120", {"health": 3448.5})
+        assert state17.net_ids == {"990779b848b78ee4": "e120"}, state17.net_ids
+        assert state17.snapshot()["feed"][0]["target_key"] == "e120", state17.snapshot()["feed"][0]
         apply_line(json.dumps({"type": "rmi_samples", "items": [[3, 1628, "053d318010b4164b0b8bf76ee252186d6d5c3e1369"], [4, 4118,
             "515ac85acc363edc31df13d046e908f82433643331383031302d623431362d346230622d386266372d366565323532313836643664"
             "085065746157617474020000000000046369616f00000000000000000000011137363536313139393532323337343831380103"]]}), state17)

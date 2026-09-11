@@ -400,7 +400,7 @@ function render(snapshot) {
     $("feed").innerHTML = (chat.length ? chat.map(c =>
       `<div class="chat"><span><b>${esc(c.name)}</b> ${esc(c.text)}</span><span class="dim">${Math.max(0, snapshot.now - c.at).toFixed(0)}s</span></div>`).join("") + "<hr>" : "") +
       (feed.length ? feed.map(f => {
-        const who = f.key === selected ? "you" : (f.name || f.key), age = Math.max(0, snapshot.now - f.at);
+        const who = f.key === selected ? "you" : (f.key === "dealt" ? `you hit ${f.target_name || "?"}` : (f.name || f.key)), age = Math.max(0, snapshot.now - f.at);
         const kind = f.key === "dealt" ? "dealt" : (f.delta < 0 ? "hit" : "heal"), types = f.types ? ` <span class="dim">${f.types.join("+")}${f.dot ? " dot" : ""}</span>` : "";
         return `<div><span>${esc(who)}${types}</span><b class="${kind}">${f.delta > 0 ? "+" : ""}${f.delta}</b><span class="dim">${age.toFixed(0)}s</span></div>`;
       }).join("") : '<span class="dim">damage feed: no health change yet</span>');
