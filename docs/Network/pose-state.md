@@ -34,23 +34,24 @@ time -> first frame with the new state (the hook stamps arrive 0.1-0.15 s after 
 | L0 | `0x0d` (13) | ~0.5 s into a `w` hold, sequence `0x8b1a`: walk -> run transition (the speed byte `group1.bit0` peaks at 0x5a) | poseA 11:47:04.4, 10.9, 12.2 |
 | L0 | `0x0b` (11) | right after a `shift` tap while moving (dodge), sequence `0x962d`, held ~1 s | poseA 11:47:04.8 (key 04.83), 10.9 |
 | L0 | `0x07` (7) | `shift` held while moving: sprint start, sequence `0xad4b`; `group0.bit44` starts counting up each 150 ms while sprinting | poseA 11:47:10.2 (key 10.04) |
-| L0 | `0x0c` (12) | once, mid-sprint, sequence `0xa146` (unknown sub-state) | poseA 11:47:12.2 |
+| L0 | `0x0c` (12) | landing: every jump ran `0x0e` -> `0x0c` -> `0x1a` (sequence `0xa53f`); the lone `0xa146` mid-sprint in poseA was a landing too | live3 14:41:36-45 (player jumping repeatedly), poseA 11:47:12.2 |
 | L0 | `0x1b` (27) | keys released while running: coming to a stop, ~1.3 s, then `0x1f` | poseA 11:47:13.2, actions2 08:22:34.5, alcdodge 18:31:27 |
 | L0 | `0x0e` (14) | `space`: jump, sequence `0xb30a`, back to `0x1f` after 1.8 s | poseA 11:47:00.7 (key 00.62) |
+| L0 | `0x0a` (10) | light / heavy attack with the weapon held at 14:37 (player's own observation on the live page) | live3 14:38:26 |
+| L0 | `0x08` (8) | ability use with that same weapon (player's observation) | live3 14:36:58 - 14:38:24 |
+| L0 stance | `group0.bit43` = `0x89` / `0x49` / `0x09` | crouched / prone / standing; crouch and prone are sequences inside idle (`bf36` -> `bc3b`, `822f` -> `aa3f`, back to `a33f`), the byte is what the viewer reads | live3 14:40:45 - 14:40:56 (player's own crouch and prone) |
+| L0 | `0x18` (24) | unnamed, the most frequent unknown: 1287 transitions on 17 players, speed 0, mostly mounted | census live3 |
 | L1 | `0x2c` (44) | `1` pressed: weapon draw, sequence `0x881d`, 0.7 s | poseA 11:47:16.2 (key 16.05) |
 | L1 | `0x2d` (45) | weapon ready; re-entered with sequence 0 and a new `slayerStateIdStarted` on each cast (`q`, `r`) and after every attack | poseA 11:47:16.9, actions2 08:22:39.2 / 42.2, alchit, poseB |
 | L1 + L2 | `0x21` (33), seq `0x61`; L2 `0x2e` seq `0xa006` | left click (light attack): 0.9 s, then L1 back to `0x2d` and L2 to 0 | poseB 11:49:54.2, 11:50:01.0 |
 | L1 | `0x27` (39), seq `0x60` | left held 1.2 s (heavy attack): follows `0x21`, 0.6 s, then `0x2d` | poseB 11:50:01.8 |
 | L1 + L2 | `0x24` (36), seq `0x8142` -> `0x9842` -> `0x9142`; L2 `0x2e` seq `0x9806` | right held 2 s (weapon RMB ability): sequence advances while held, `0x2d` on release | poseB 11:50:08.8 - 10.9 |
+| L1 | `0x25` (37) | block (player's observation with the weapon held at 14:39); census: 221 transitions on 12 players, moving at 3.3 u/s while in it | live3 14:39 |
+| L1 | `0x23` (35), `0x00` | unnamed, frequent (1111 and 1324 transitions); `0x00` is likely "no weapon layer" | census live3 |
 
-Observed by the player on the live page (14:37-14:41, weapon of that moment, ids are per weapon
-script): L0 `0x0a` attack, L0 `0x08` ability, L1 `0x25` block. Repeated jumps show `0x0e` -> `0x0c` ->
-`0x1a`: `0x0c` is the landing, not a sprint state as first written.
-
-**Crouch and prone are not states.** They are sequences inside idle (`slayerSequenceId[L0]` `bf36` ->
-`bc3b` crouching, `822f` -> `aa3f` going prone, `a33f` standing) and a stance byte, `group0.bit43`:
-`0x89` crouched, `0x49` prone, `0x09` standing (bits 0x80 and 0x40 on top of a base 0x09). The viewer
-reads the stance byte.
+Attack, ability and block ids are **per weapon script**: with the morning weapon the attacks sat on L1
+(`0x21`, `0x27`, `0x24`), with the 14:37 weapon on L0 (`0x0a`, `0x08`). The table names what was seen,
+not a global vocabulary; `pose_census.py` lists what is still unnamed in any log.
 
 Layer 2 is set only during an attack (`0x2e`, two sequences seen), so it looks like the attack or
 hit-volume layer; layer 3 never changed. Open: the sub-state `0x0c`, the `0x1a/0xaa2f` return inside a
