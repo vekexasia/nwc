@@ -444,7 +444,7 @@ def apply_line(line: str, state: LiveState) -> None:
                 decoded = parse_mount(bytes.fromhex(item[6]))
                 if decoded:
                     state.mount(f"e{item[1]}", decoded)
-            elif item[3] == 15 and item[6][:4] == "01ff" and item[5] >= 10:
+            elif item[3] == 15 and item[6][2:4] == "ff" and int(item[6][:2], 16) & 1 and item[5] >= 10:
                 state.kind(f"e{item[1]}", struct.unpack(">f", bytes.fromhex(item[6][12:20]))[0] > 0)
             elif item[3] == 2930 and item[5] == 3 and item[6][:4] == "0101":
                 state.interacting(f"e{item[1]}", item[6][4:6] == "01")
