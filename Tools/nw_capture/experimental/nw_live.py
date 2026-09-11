@@ -690,6 +690,23 @@ class Capture:
         self.started_at, self.seconds = time.time(), seconds
         return self.status()
 
+    def watch(self, seconds: int = 7200) -> None:
+        """Start a capture whenever the game is running and none is: the player's own full states
+        (name, gear, attributes) arrive at spawn, so the capture has to be up before the world loads."""
+        def loop():
+            while True:
+                try:
+                    game = subprocess.run(["pgrep", "-x", "NewWorld.exe"], capture_output=True, text=True).stdout.strip()
+                    status = self.status()
+                    if game and not status["running"] and not status["lock"] and (
+                            self.started_at is None or time.time() - self.started_at > 30):
+                        print(f"auto-capture: game pid {game.split()[0]}, starting", flush=True)
+                        self.start(seconds)
+                except Exception as error:      # noqa: BLE001 - the watcher must survive
+                    print(f"auto-capture: {error}", flush=True)
+                time.sleep(5)
+        threading.Thread(target=loop, daemon=True).start()
+
     def stop(self) -> dict:
         if not self.status()["running"]:
             return {"error": "no capture started from here is running", **self.status()}
@@ -1055,6 +1072,8 @@ def main(argv=None) -> int:
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--check", action="store_true", help="run the self-check and exit")
+    parser.add_argument("--auto-capture", action="store_true",
+                        help="start the join-probe capture whenever the game runs and no capture does")
     args = parser.parse_args(argv)
     if args.check:
         return self_check()
@@ -1063,7 +1082,10 @@ def main(argv=None) -> int:
     state = LiveState()
     stop = threading.Event()
     threading.Thread(target=tail, args=(args.log, state, stop), daemon=True).start()
-    server = ThreadingHTTPServer((args.host, args.port), make_handler(state, Capture()))
+    capture = Capture()
+    if args.auto_capture:
+        capture.watch()
+    server = ThreadingHTTPServer((args.host, args.port), make_handler(state, capture))
     print(f"following {args.log}")
     print(f"open http://{args.host}:{args.port}/   (state: /state)")
     try:
