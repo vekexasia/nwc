@@ -32,6 +32,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE / "offline"))
 from decode_cooldowns import parse_cooldowns  # noqa: E402
+from decode_mount import parse_mount  # noqa: E402
 from decode_pose import pose_from_payload  # noqa: E402
 from decode_stamina import parse_stamina  # noqa: E402
 from decode_vitals import parse_members  # noqa: E402  the shared, verified payload model
@@ -256,6 +257,15 @@ class LiveState:
             slot["pose_at"] = time.time()
             self.counters["pose"] = self.counters.get("pose", 0) + 1
 
+    def mount(self, key: str, decoded: dict) -> None:
+        """MountComponentReplicatedState: mounted flag (owner and remote shapes) and mount stamina."""
+        with self.lock:
+            slot = self._slot(key)
+            for name in ("mounted", "mount_stamina"):
+                if name in decoded:
+                    slot[name] = decoded[name]
+            slot["mount_at"] = time.time()
+
     def cooldowns(self, key: str, entries: list) -> None:
         """CooldownTimersComponentReplicatedState deltas: one (id, start, expiry) per slot."""
         with self.lock:
@@ -415,6 +425,10 @@ def apply_line(line: str, state: LiveState) -> None:
                 entries = parse_cooldowns(bytes.fromhex(item[6]))
                 if entries:
                     state.cooldowns(f"e{item[1]}", entries)
+            elif item[3] == 5620:
+                decoded = parse_mount(bytes.fromhex(item[6]))
+                if decoded:
+                    state.mount(f"e{item[1]}", decoded)
     elif kind == "vitals_samples":
         for item in items:
             if len(item) < 3:
@@ -690,6 +704,10 @@ def self_check() -> int:
         record = (bytes([0x01]) + mask + bytes([0x4b, 0x1c, 0x46, 0x96])).hex()
         apply_line(json.dumps({"type": "join_samples", "items": [[5, 5, 16, 11, "0x0", len(record) // 2, record]]}), state10)
         assert state10.objects["e5"]["heading"] == -104.3, state10.objects["e5"]
+        apply_line(json.dumps({"type": "join_samples", "items": [
+            [6, 5, 62, 5620, "0x0", 11, "02100118d443b5eded1434"],
+            [7, 8, 62, 5620, "0x0", 12, "0c0100000000030400000000"]]}), state10)
+        assert state10.objects["e5"]["mounted"] is True and state10.objects["e8"]["mounted"] is False, state10.objects
 
         # entity keys use the verified join identity unless the user has chosen one
         state7 = LiveState()

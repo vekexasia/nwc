@@ -111,6 +111,7 @@
     <div class="bar mana"><div class="label"><span>mana</span><b id="mpText">-</b></div><div class="track"><div class="fill" id="mpFill" style="width:0"></div></div></div>
     <div class="bar stamina"><div class="label"><span>stamina <span class="note" id="stNote"></span></span><b id="stText">-</b></div><div class="track"><div class="fill" id="stFill" style="width:0"></div></div></div>
     <div id="cooldowns"></div>
+    <div class="dim" style="font-size:12px" id="mountText"></div>
     <div class="dim" style="font-size:12px" id="hudPos"></div>
     <button id="asMe" style="display:none; margin-top:6px" title="tell the server this entity is you">this is me</button>
   </div>
@@ -344,6 +345,7 @@ $("identify").onclick = async e => {
 // ------------------------------------------------------------------ state
 function poseText(slot) {           // layer 0 is locomotion, layer 1 the weapon; idle alone says nothing worth ink
   const p = slot.pose || {}, parts = [];
+  if (slot.mounted) parts.push("mounted");
   if (p["0"] && p["0"] !== "idle") parts.push(p["0"]);
   if (p["1"] && p["1"] !== "weapon out") parts.push(p["1"]); else if (p["1"] === "weapon out" && !parts.length) parts.push("weapon out");
   return parts.join(", ");
@@ -392,6 +394,7 @@ function render(snapshot) {
       `<b>${left > 0 ? left.toFixed(1) + "s" : "ready"}</b></div>`;
   }).join("") || '<div class="note" style="font-size:11px">cooldowns: none seen yet (they arrive when an ability is used)</div>';
   $("stNote").textContent = shown.winded_s > 0 ? "winded" : (shown.regen_delay_s > 0 ? "regen delay" : "");
+  $("mountText").textContent = shown.mounted ? `mounted${shown.mount_stamina != null ? ", horse stamina " + shown.mount_stamina : ""}` : "";
   $("hudPos").textContent = (shown.position ? `x ${shown.position.x}  y ${shown.position.y}  elev ${shown.position.elevation ?? shown.position.elev_raw} m` : "") +
     (shown.pose ? `   ·  ${shown.pose["0"] || "?"} / ${shown.pose["1"] || "-"}` : "");
 
