@@ -365,6 +365,7 @@ $("identify").onclick = async e => {
 // ------------------------------------------------------------------ state
 function poseText(slot) {           // layer 0 is locomotion, layer 1 the weapon; idle alone says nothing worth ink
   const p = slot.pose || {}, parts = [];
+  if (p["3"] === "dead") return "dead";
   if (slot.stance && slot.stance !== "standing") parts.push(slot.stance);
   if (slot.interacting && !slot.mounted) parts.push("interacting");   // Interact 01 01 01 also covers riding, so only on foot
   if (slot.mounted && !slot.npc) parts.push(slot.mount_name ? `on ${slot.mount_name}` : "mounted");

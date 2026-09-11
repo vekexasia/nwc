@@ -23,6 +23,8 @@ LAYER_NAMES = {
         0x0a: "attack", 0x08: "ability", 0x09: "gathering"},
     1: {0x2c: "drawing weapon", 0x2d: "weapon out", 0x21: "light attack", 0x27: "heavy attack",
         0x24: "ability", 0x25: "block", 0x29: "fishing"},
+    2: {0x2e: "attacking"},                 # set only while an attack runs (poseB)
+    3: {0x20: "dead"},                      # entered as the player's health hit 0 (live3 14:04:23)
 }
 # group0.bit43 is a stance byte: 0x80 crouched, 0x40 prone, 0x09 the base seen standing (crouch and
 # prone are sequences inside the idle state, not state changes, so the state id alone misses them)
