@@ -25,6 +25,7 @@ import struct
 import sys
 import threading
 import time
+import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -131,6 +132,24 @@ class LiveState:
                 if step < 500:      # a teleport or a bad read is not a step
                     window["moved"][key] = window["moved"].get(key, 0.0) + step
 
+    def pick(self, key: str) -> dict:
+        """Say who you are without walking: the entity key clicked in the table."""
+        with self.lock:
+            slot = self.objects.get(key)
+            self.me = {"object": key, "method": "picked", "at": time.time(),
+                       "name": slot.get("name") if slot else None}
+            self._save_me()
+            return dict(self.me)
+
+    def pick_by_name(self, name: str) -> dict:
+        """The same, by character name: the join attaches names to entities, so a name is enough."""
+        with self.lock:
+            for key, slot in self.objects.items():
+                if (slot.get("name") or "").lower() == name.lower():
+                    return self.pick(key)
+            return {"error": f"no entity named {name!r} seen yet",
+                    "seen": sorted(slot.get("name") for slot in self.objects.values() if slot.get("name"))}
+
     def start_calibration(self, seconds: float = 3.0) -> None:   # manual override, kept for the page
         """Watch the next seconds of movement: the object that walks is the player."""
         with self.lock:
@@ -203,7 +222,7 @@ class LiveState:
         Scoped on purpose: this only ever decides *identity*, never the coordinates, and every decision
         is reported with its margin so a wrong pick is visible in the page instead of silent.
         """
-        if self.me.get("method") == "walk":
+        if self.me.get("method") in ("walk", "picked"):
             return          # you told it who you are: with entity keys that stays true, never override it
         if now - self.last_auto < self.AUTO_EVERY:
             return
@@ -370,8 +389,27 @@ def make_handler(state: LiveState):
         def log_message(self, *args):    # quiet
             pass
 
+        def _answer(self, answer: dict) -> None:
+            body = json.dumps(answer, allow_nan=False).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            try:
+                self.wfile.write(body)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+
         def do_POST(self):
-            if self.path.startswith("/calibrate"):
+            if self.path.startswith("/pick"):
+                query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+                if query.get("name"):
+                    self._answer(state.pick_by_name(query["name"][0]))
+                elif query.get("key"):
+                    self._answer(state.pick(query["key"][0]))
+                else:
+                    self._answer({"error": "pass key= or name="})
+            elif self.path.startswith("/calibrate"):
                 state.start_calibration(3.0)
                 time.sleep(3.2)
                 body = json.dumps(state.finish_calibration()).encode()

@@ -211,9 +211,12 @@ function render(snapshot) {
       `<td>${age ? (now - age).toFixed(1) + "s" : "-"}</td></tr>`;
   }).join("");
   for (const row of document.querySelectorAll("#rows tr")) {
-    row.onclick = () => {
+    row.onclick = async () => {
       selected = row.dataset.key;
       localStorage.setItem("nw.live.me", selected);
+      // tell the server, not just this tab: the identification belongs to the session, and with the
+      // join the entity key is stable, so this is final until you pick again
+      try { await fetch("/pick?key=" + encodeURIComponent(selected), { method: "POST" }); } catch (error) {}
     };
   }
   const meInfo = snapshot.me || {};
