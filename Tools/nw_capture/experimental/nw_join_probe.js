@@ -123,7 +123,7 @@ function arm() {
             if (typeIndex === undefined || STATE_TYPES.has(typeIndex) || typeIndex === 8 || typeIndex === 11) return;
             try {
                 const cursor = this.ctx.add(0x10).readPointer(), end = this.ctx.add(0x08).readPointer();
-                const n = Math.min(160, end.sub(cursor).toInt32());
+                const n = Math.min(512, end.sub(cursor).toInt32());   // 160 cut the warboard and inventory records
                 emit("rmi_samples", [Date.now(), typeIndex, n > 0 ? hexAt(cursor, n) : ""]);
             } catch (e) { }
         }
