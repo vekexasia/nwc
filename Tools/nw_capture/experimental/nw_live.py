@@ -49,9 +49,10 @@ def decode_abs(payload_hex: str):
         return None
     if not (-1e6 < x < 1e6 and -1e6 < y < 1e6):
         return None
-    # The u16 is the quantised elevation as it comes off the wire: the affine mapping back to world
-    # units is not established, so it is reported raw and named that way.
-    return {"x": round(x, 2), "y": round(y, 2), "elev_raw": elevation}
+    # The u16 is quantised into [-100, 1000] (reader 0x142a433d0: 1/65535 then the range base), the
+    # mapping decode_position.py uses and that sat a median 1.38 units from the community markers.
+    return {"x": round(x, 2), "y": round(y, 2), "elev_raw": elevation,
+            "elevation": round(-100.0 + elevation * 1100.0 / 65535.0, 1)}
 
 
 class LiveState:
@@ -645,6 +646,9 @@ def self_check() -> int:
         state13.me_path = Path(tmp) / "me13.json"; state13.max_path = Path(tmp) / "max13.json"; state13.maxima = {}
         state13.player("e1", "Tester", "id"); state13.me = {"object": "e1", "method": "picked"}
         assert state13.reset() == {"dropped": 1} and not state13.objects and state13.me["object"] == "e1"
+
+        # the reference position of alc-protocol-reference.md 2.4 decodes to elevation 72.1
+        assert decode_abs("460ab4d245436963280c")["elevation"] == 72.1, decode_abs("460ab4d245436963280c")
 
         # every health change is a feed entry with its delta
         state14 = LiveState()

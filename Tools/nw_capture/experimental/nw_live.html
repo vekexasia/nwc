@@ -392,7 +392,7 @@ function render(snapshot) {
       `<b>${left > 0 ? left.toFixed(1) + "s" : "ready"}</b></div>`;
   }).join("") || '<div class="note" style="font-size:11px">cooldowns: none seen yet (they arrive when an ability is used)</div>';
   $("stNote").textContent = shown.winded_s > 0 ? "winded" : (shown.regen_delay_s > 0 ? "regen delay" : "");
-  $("hudPos").textContent = (shown.position ? `x ${shown.position.x}  y ${shown.position.y}  elev(raw) ${shown.position.elev_raw}` : "") +
+  $("hudPos").textContent = (shown.position ? `x ${shown.position.x}  y ${shown.position.y}  elev ${shown.position.elevation ?? shown.position.elev_raw} m` : "") +
     (shown.pose ? `   ·  ${shown.pose["0"] || "?"} / ${shown.pose["1"] || "-"}` : "");
 
   now = (snapshot && snapshot.now) || Date.now() / 1000;
