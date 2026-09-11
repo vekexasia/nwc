@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import struct
 import sys
 import threading
@@ -51,6 +52,14 @@ class LiveState:
         self.lock = threading.Lock()
         self.objects: dict[str, dict] = {}
         self.me: dict = {"object": None, "method": None}
+        self.me_path = Path(os.environ.get("NW_LIVE_ME", "/tmp/nwc/nw_live_me.json"))
+        if self.me_path.exists():
+            try:
+                loaded = json.loads(self.me_path.read_text())
+                if loaded.get("object"):
+                    self.me = loaded          # survives a server restart; the id holds while the game runs
+            except Exception:
+                pass
         self.calibration: dict | None = None   # {"until": ts, "started": ts, "moved": {key: distance}}
         self.counters = {"position": 0, "health": 0, "mana": 0, "player": 0, "lines": 0, "skipped": 0}
         self.started = time.time()
@@ -89,6 +98,11 @@ class LiveState:
             margin = moved[0][1] / moved[1][1] if len(moved) > 1 and moved[1][1] > 1e-6 else None
             self.me = {"object": best, "method": "walk", "distance": round(moved[0][1], 1),
                        "margin_over_next": None if margin is None else round(margin, 2)}
+            try:
+                self.me_path.parent.mkdir(parents=True, exist_ok=True)
+                self.me_path.write_text(json.dumps(self.me))
+            except Exception:
+                pass
             return dict(self.me)
 
     def calibration_active(self) -> bool:
@@ -267,7 +281,10 @@ def make_handler(state: LiveState):
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
-            self.wfile.write(body)
+            try:
+                self.wfile.write(body)
+            except (BrokenPipeError, ConnectionResetError):
+                pass   # the browser navigated away mid-request (clicking a link does this)
 
     return Handler
 

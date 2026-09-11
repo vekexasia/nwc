@@ -154,8 +154,12 @@ function render(snapshot) {
   } else {
     link.href = "#"; link.textContent = "community map (pick an object)";
   }
-  document.getElementById("status").textContent = snapshot.last_line_age_s == null
-    ? "no data yet" : `last line ${snapshot.last_line_age_s}s ago`;
+  const age = snapshot.last_line_age_s;
+  const status = document.getElementById("status");
+  status.textContent = age == null ? "no data yet"
+    : (age > 5 ? `no capture running (last line ${age}s ago) — start one and this fills up`
+               : `live: last line ${age}s ago`);
+  status.className = age == null || age > 5 ? "warn" : "dim";
   document.getElementById("counters").textContent = JSON.stringify(snapshot.counters);
   lastCounters = snapshot.counters;
   draw(objects);
@@ -166,7 +170,9 @@ async function poll() {
     const response = await fetch("/state", { cache: "no-store" });
     render(await response.json());
   } catch (error) {
-    document.getElementById("status").textContent = "server unreachable";
+    document.getElementById("status").textContent =
+      `cannot reach the server on port ${location.port || 80} — is this tab from an older run? ` +
+      `open the address the server printed`;
   }
   setTimeout(poll, 250);
 }
