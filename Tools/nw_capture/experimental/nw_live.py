@@ -865,7 +865,8 @@ def self_check() -> int:
         e36 = state15.objects["e36"]
         assert e36["level"] == 64 and e36["faction"] == 3 and e36["mana"] == 100.0 and e36["mana_max"] == 100.0, e36
         apply_line(json.dumps({"type": "join_samples", "items": [[5, 36, 1, 129, "0x0", 92,
-            "010f05000000040000000500000003000000e10000000200000005000000010000000500000000000000050001b41e000001b41e05" + "00" * 39]]}), state15)
+            "010f05000000" + "0400000005000000" + "03000000e1000000" + "0200000005000000" + "0100000005000000" + "0000000005000000"
+            + "01b41e000001b41e05000000" + "00" * 34]]}), state15)
         assert state15.objects["e36"]["attributes"] == {"CON": 5, "FOC": 225, "INT": 5, "DEX": 5, "STR": 5}, state15.objects["e36"]
 
         # a static position stays until an ALC one arrives, and never overrides one
