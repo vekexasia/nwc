@@ -114,6 +114,7 @@
     <div id="cooldowns"></div>
     <div class="dim" style="font-size:12px" id="mountText"></div>
     <div class="dim" style="font-size:12px" id="hudPos"></div>
+    <div class="dim" style="font-size:11px; font-family: var(--mono)" id="hudLayers"></div>
     <button id="asMe" style="display:none; margin-top:6px" title="tell the server this entity is you">this is me</button>
   </div>
 </div>
@@ -398,8 +399,12 @@ function render(snapshot) {
   }).join("") || '<div class="note" style="font-size:11px">cooldowns: none seen yet (they arrive when an ability is used)</div>';
   $("stNote").textContent = shown.winded_s > 0 ? "winded" : (shown.regen_delay_s > 0 ? "regen delay" : "");
   $("mountText").textContent = shown.mounted ? `mounted${shown.mount_stamina != null ? ", horse stamina " + shown.mount_stamina : ""}` : "";
-  $("hudPos").textContent = (shown.position ? `x ${shown.position.x}  y ${shown.position.y}  elev ${shown.position.elevation ?? shown.position.elev_raw} m` : "") +
-    (shown.pose ? `   ·  ${shown.pose["0"] || "?"} / ${shown.pose["1"] || "-"}` : "");
+  $("hudPos").textContent = shown.position ? `x ${shown.position.x}  y ${shown.position.y}  elev ${shown.position.elevation ?? shown.position.elev_raw} m` : "";
+  // the four slayer layers as the wire has them: state id (hex) and sequence id, so an unknown one can be reported
+  const ids = shown.pose_id || {}, seqs = shown.pose_seq || {}, names = shown.pose || {};
+  $("hudLayers").textContent = ["0", "1", "2", "3"].filter(l => ids[l] != null).map(l =>
+    `L${l} ${names[l] && !names[l].startsWith("L") ? names[l] : "?"} 0x${ids[l].toString(16)}${seqs[l] != null ? "/" + seqs[l].toString(16) : ""}`).join("   ") +
+    (shown.stance ? `   stance ${shown.stance}` : "");
 
   now = (snapshot && snapshot.now) || Date.now() / 1000;
   const rows = Object.entries(objects).filter(([key, slot]) => slot.position || slot.name || slot.health != null)

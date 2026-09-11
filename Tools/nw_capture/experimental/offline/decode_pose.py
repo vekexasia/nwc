@@ -30,6 +30,7 @@ STANCE_BIT = 43
 STANCE_FLAGS = ((0x80, "crouched"), (0x40, "prone"))
 # reader-vector bits 13..24 are the four (stateId, stateIdStarted, sequenceId) triplets
 STATE_ID_BITS = {13: 0, 16: 1, 19: 2, 22: 3}
+SEQUENCE_ID_BITS = {15: 0, 18: 1, 21: 2, 24: 3}
 
 
 QUANT = math.sqrt(2) / 255
@@ -81,7 +82,11 @@ def pose_from_payload(payload: bytes):
             state_id, size = read_prefix_varint(chunk, 0)
             if size == len(chunk):
                 out.setdefault("pose", {})[layer] = {
-                    "id": state_id, "name": LAYER_NAMES.get(layer, {}).get(state_id, str(state_id))}
+                    "id": state_id, "name": LAYER_NAMES.get(layer, {}).get(state_id, f"L{layer}#{state_id}")}
+        elif bit in SEQUENCE_ID_BITS and name == "slayerSequenceId":
+            sequence_id, size = read_prefix_varint(chunk, 0)
+            if size == len(chunk):
+                out.setdefault("sequence", {})[SEQUENCE_ID_BITS[bit]] = sequence_id
     return out
 
 
@@ -99,7 +104,9 @@ def check():
     payload = bytes([0x01]) + mask + bytes([0x4b, 0x1c, 0x2d])
     assert pose_from_payload(payload) == {"pose": {1: {"id": 0x2d, "name": "weapon out"}}}, pose_from_payload(payload)
     payload = bytes([0x01]) + mask + bytes([0x4b, 0x1c, 0x77])
-    assert pose_from_payload(payload) == {"pose": {1: {"id": 0x77, "name": "119"}}}
+    assert pose_from_payload(payload) == {"pose": {1: {"id": 0x77, "name": "L1#119"}}}
+    mask = encode_mask_varint((1 << 0) | (1 << 1) | (1 << 15))
+    assert pose_from_payload(bytes([0x01]) + mask + bytes([0x4b, 0x1c, 0xa3, 0x3f])) == {"sequence": {0: 0xfe3}}
     # rotation 46 96 from the joinwalk (11:25:22): z largest, x and y zero, w = 150 -> yaw 165.7, heading -104.3;
     # the walk itself moved at -109.4, five degrees off while the body was still turning
     q = quaternion(bytes.fromhex("4696"))

@@ -252,6 +252,10 @@ class LiveState:
             table = slot.setdefault("pose", {})
             for layer, value in decoded.get("pose", {}).items():
                 table[str(layer)] = value["name"]
+            for layer, value in decoded.get("pose", {}).items():
+                slot.setdefault("pose_id", {})[str(layer)] = value["id"]
+            for layer, value in decoded.get("sequence", {}).items():
+                slot.setdefault("pose_seq", {})[str(layer)] = value
             if "heading" in decoded:
                 slot["heading"] = decoded["heading"]
             if "stance" in decoded:
@@ -718,7 +722,7 @@ def self_check() -> int:
         mask = encode_mask_varint((1 << 0) | (1 << 1) | (1 << 13))
         record = (bytes([0x01]) + mask + bytes([0x4b, 0x1c, 0x0e])).hex()
         apply_line(json.dumps({"type": "join_samples", "items": [[4, 5, 16, 11, "0x0", len(record) // 2, record]]}), state10)
-        assert state10.objects["e5"]["pose"] == {"0": "jump"}, state10.objects["e5"]
+        assert state10.objects["e5"]["pose"] == {"0": "jump"} and state10.objects["e5"]["pose_id"] == {"0": 14}, state10.objects["e5"]
         mask = encode_mask_varint((1 << 0) | (1 << 1) | (1 << 11))
         record = (bytes([0x01]) + mask + bytes([0x4b, 0x1c, 0x46, 0x96])).hex()
         apply_line(json.dumps({"type": "join_samples", "items": [[5, 5, 16, 11, "0x0", len(record) // 2, record]]}), state10)
