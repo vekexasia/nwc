@@ -41,7 +41,28 @@ maps the per-index readers and their observed consumed widths.
 Where the numbers come from: `worldPosAbs` = two big-endian float32 then a quantised u16 in
 `[-100, 1000]` (elevation); `worldPosRel` = three quantised deltas, `0xff` = "no update".
 
-## Health: static field map recovered, live payload still open
+## Health: decoded from the traffic and validated against the game's own numbers
+
+**The health is readable.** The Vitals payload is `[0x01][mask][fields in member order]`, mask
+bit 0 is `HealthAmount` and the field is a **big-endian float32**. Verified by draining the
+player's own health with the right mouse button: the decoded deltas on that object were **+57.7**
+and **-362.4**, exactly the `+57` heal and `362` damage the game printed on screen, and the same
+capture shows other entities on their own tick patterns (+43.9/+57.7 regeneration, -318.5 for a
+second entity hit by the same ability). Read it with
+`Tools/nw_capture/experimental/offline/decode_vitals.py --log <log> [--object <addr>]` (self-check:
+`--check`); the log comes from `nw_state_probe.js`, which records the object, the consumed bytes and
+the payload for each Vitals read.
+
+The instrument that found it, and the two dead ends worth remembering: hooking the registry's
+`Unmarshal` addresses (the census column) sees nothing because those are not what the client calls
+to read a state, and hooking the readers by address needs **RVAs** (the Ghidra listings show
+absolute addresses; passing one as an RVA gives an access violation and kills the whole install).
+The working hook set is the Vitals reader path itself (`0x17b4110` mask stage, `0x17b43c0` masked
+member, plus the `0x17b3e90`/`0x17b4320` stages) with the `worldPosAbs` reader as a control.
+
+Still open: which mask bit is `HealthMax`, the exact member order of the state's vector, and how to
+attribute an object to the local player without the combat text (the player's object here is the one
+whose deltas matched the on-screen numbers). Captures need no focus at all; injecting input does.
 
 Health is **not** an `ALCReplicatedState` property (all 63 checked). The actual network type is
 `MB::VitalsComponentReplicatedState`, a custom group-aware handler rather than the ALC schema
