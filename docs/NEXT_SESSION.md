@@ -575,3 +575,22 @@ RMI census (it needs its own capture slot: one Frida session at a time).
   id set" (state 4 = mount out, owner on foot, moving at walking speed over 4,995 samples).
 - Trap: stopping the server while its watcher is on can leave a capture it started as an orphan
   (SIGINT is default in the child: `kill -INT <pid from /tmp/nw-capture.lock>` stops it cleanly).
+
+## Update 2026-09-11 (21:10): the fight at 20:45
+
+- Per-hit damage read from `OnDamage` (3601) and `OnDamageDealt` (2071): 34 hits summed to 9,811 on
+  9,659 max health, the fraction field reproduces every amount; damage type byte = `IntID` of
+  `javelindata_damagetypes` (player: Thrust + Nature; taken: Corruption, Lightning). Feed shows exact
+  amounts, "you hit Grunt": the target u64 is bound to an entity by the equal health delta.
+- Attributes were misread (a count that is not there); now five (points, id) pairs: 5, 5, 225, 5, 5 on
+  ids 4..0. Id 2 = INT by datasheet order; the player has a projectile Thrust weapon (musket fits
+  DEX/INT). Ask the player which attribute holds 225 to fix the order for good.
+- Poses: owner mount `0x14 -> 0x17 -> 0x0f`, L3 `0x0c` hit / `0x0d` dying, L1 `0x23` likely weapon swap
+  (paperdoll member-4 delta in the same frame), L1 `0x2b` (20:45:39, 1 s) unnamed.
+- e1 named from a chat line sent by the self uuid (`PlayerManagerSelfIdentificationMsg` 1628).
+- Ids: an entity's u64 network id is not in any of its own state chunks; it appears in
+  `SpellComponentReplicatedState` (2912: caster, target, caster, 1.0) and `ProjectileReplicatedState`
+  (16: position, velocity, projectile def u64, owner u64). Mapping u64 -> V1 needs the entity-create
+  header, which the join probe does not hook.
+- Server start trap: `pkill` + start in the same shell command left the new server dead twice; start
+  it in its own command.

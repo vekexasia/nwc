@@ -24,10 +24,17 @@ names, player level (899), faction (3152: 1 Syndicate, 2 Marauders, 3 Covenant),
 (4236), player vs companion (Vitals member 0 bit 1), gathering flag (2930), stance byte, facing wedge,
 damage feed, capture start/stop from the page.
 
+Added on 2026-09-11 evening through the RMI stream (`rmi_samples`, [rmi-messages.md](rmi-messages.md)):
+chat above the feed, per-hit damage taken and dealt with damage type names, the target of a dealt hit
+(bound by the equal health delta), the player's own name (chat line from the self uuid), attributes
+fixed (five (points, id) pairs). Still not shown for e1: the equipped weapons (the own paperdoll
+carries item instances, not definition ids; the inventory stream `ItemVersionData`/`JsonItemData`
+is cut at 160 bytes by the probe).
+
 Still open: the numeric slayer state ids have no table in binary or assets
 ([pose-state-names.md](pose-state-names.md)); the player's own HealthMax (the Vitals full state gives
 `HealthBaseMax`, exact for mobs, below the live max for players); StatMultiplierTable stat ids are an
-unnamed enum; per-hit damage needs the RMI census (`nw_rmi_probe.js`, untested). Static entities (13)
+unnamed enum. Static entities (13)
 are on the map as squares since `9306949`; the Vitals full state is read to the byte
 ([name-book.md](name-book.md)).
 
