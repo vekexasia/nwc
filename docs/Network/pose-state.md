@@ -38,10 +38,14 @@ time -> first frame with the new state (the hook stamps arrive 0.1-0.15 s after 
 | L0 | `0x1b` (27) | keys released while running: coming to a stop, ~1.3 s, then `0x1f` | poseA 11:47:13.2, actions2 08:22:34.5, alcdodge 18:31:27 |
 | L0 | `0x0e` (14) | `space`: jump, sequence `0xb30a`, back to `0x1f` after 1.8 s | poseA 11:47:00.7 (key 00.62) |
 | L1 | `0x2c` (44) | `1` pressed: weapon draw, sequence `0x881d`, 0.7 s | poseA 11:47:16.2 (key 16.05) |
-| L1 | `0x2d` (45) | weapon ready; re-entered with sequence 0 and a new `slayerStateIdStarted` on each cast (`q`, `r`) and on each hit | poseA 11:47:16.9, actions2 08:22:39.2 / 42.2, alchit |
+| L1 | `0x2d` (45) | weapon ready; re-entered with sequence 0 and a new `slayerStateIdStarted` on each cast (`q`, `r`) and after every attack | poseA 11:47:16.9, actions2 08:22:39.2 / 42.2, alchit, poseB |
+| L1 + L2 | `0x21` (33), seq `0x61`; L2 `0x2e` seq `0xa006` | left click (light attack): 0.9 s, then L1 back to `0x2d` and L2 to 0 | poseB 11:49:54.2, 11:50:01.0 |
+| L1 | `0x27` (39), seq `0x60` | left held 1.2 s (heavy attack): follows `0x21`, 0.6 s, then `0x2d` | poseB 11:50:01.8 |
+| L1 + L2 | `0x24` (36), seq `0x8142` -> `0x9842` -> `0x9142`; L2 `0x2e` seq `0x9806` | right held 2 s (weapon RMB ability): sequence advances while held, `0x2d` on release | poseB 11:50:08.8 - 10.9 |
 
-Open: layers 2 and 3 never changed in these runs; the sub-states `0x0c` and the `0x1a/0xaa2f` return
-inside a sprint are not explained; the names of the clips are in the assets, not here.
+Layer 2 is set only during an attack (`0x2e`, two sequences seen), so it looks like the attack or
+hit-volume layer; layer 3 never changed. Open: the sub-state `0x0c`, the `0x1a/0xaa2f` return inside a
+sprint, and the names of the clips, which are in the assets, not here.
 
 Also moving with the pose but not named: `group0.bit37` (2 bytes, `c500`/`c000`/`0000`, the TODO
 calls it `segmentedStamina`), `group0.bit41` (1 byte, `e3`/`f3` toggling while moving) and
@@ -65,6 +69,6 @@ nothing on ledgers whose channel-1 stream does not frame with the known grammar
 
 ## Next
 
-Still to drive, one per capture with the join probe: light and heavy attack (mouse, `nw_vmouse.py`),
-block, weapon sheathe, mount, swim, emotes. Then the asset side: `slayerStateId` -> slayer script ->
+Still to drive, one per capture with the join probe: block, weapon sheathe, mount, swim, emotes,
+and the same actions with a second weapon to see whether the L1 ids are per weapon. Then the asset side: `slayerStateId` -> slayer script ->
 clip, from the game files (nw-buddy), which is what a server would need to pick a state on purpose.
