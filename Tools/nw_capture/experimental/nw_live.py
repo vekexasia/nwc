@@ -11,8 +11,8 @@
     # then open http://127.0.0.1:8765/
 
 What it shows: world position per object (ALC worldPosAbs), health and mana per Vitals object, and the
-player names from PlayerComponent. It does **not** know which object is you: the three states are
-different objects with no common key yet, so the page lets you pick the object once and remembers it.
+player names from PlayerComponent. With entity-keyed join samples, e1 is the player by default; otherwise
+the page can identify the player by walking or by picking a table row.
 The decoders are the same ones used offline; this only adds the tailing.
 """
 from __future__ import annotations
@@ -74,7 +74,20 @@ class LiveState:
         self.started = time.time()
         self.last_line_at: float | None = None
 
+    @staticmethod
+    def _is_entity_key(key: str) -> bool:
+        return key.startswith("e") and key[1:].isdigit()
+
+    def _join_default(self, key: str) -> None:
+        if not self._is_entity_key(key) or self.me.get("method") in ("walk", "picked"):
+            return
+        if self.me.get("object") == "e1" and self.me.get("method") == "join-default":
+            return
+        self.me = {"object": "e1", "method": "join-default", "at": time.time()}
+        self._save_me()
+
     def _slot(self, key: str) -> dict:
+        self._join_default(key)
         return self.objects.setdefault(key, {"object": key})
 
     def _save_me(self) -> None:
@@ -222,8 +235,8 @@ class LiveState:
         Scoped on purpose: this only ever decides *identity*, never the coordinates, and every decision
         is reported with its margin so a wrong pick is visible in the page instead of silent.
         """
-        if self.me.get("method") in ("walk", "picked"):
-            return          # you told it who you are: with entity keys that stays true, never override it
+        if self.me.get("method") in ("walk", "picked", "join-default"):
+            return          # explicit or join identity must not be replaced by movement heuristics
         if now - self.last_auto < self.AUTO_EVERY:
             return
         self.last_auto = now
@@ -362,6 +375,7 @@ def tail(path: Path, state: LiveState, stop: threading.Event, poll: float = 0.2)
             candidate = newest_log(directory)
             if candidate is not None and candidate != path:
                 print(f"new capture: {candidate}", flush=True)
+                # Keep session state: names arrive once and must survive log rotation.
                 path, offset, pending = candidate, 0, b""
         try:
             size = path.stat().st_size
@@ -529,6 +543,61 @@ def self_check() -> int:
         blob = json.dumps(state3.snapshot(), allow_nan=False)      # must not raise
         assert "NaN" not in blob and "Infinity" not in blob, blob
         assert state3.snapshot()["objects"]["0xnan"].get("mana") == 12.5, state3.snapshot()
+
+        # entity keys use the verified join identity unless the user has chosen one
+        state7 = LiveState()
+        state7.me_path = Path(tmp) / "me7.json"
+        state7.me = {"object": None, "method": None}
+        state7.player("e158", "Where Arda", "682b")
+        assert state7.me["object"] == "e1" and state7.me["method"] == "join-default", state7.me
+        state7.pick("e158")
+        state7.player("e1", "stormvind", "player")
+        assert state7.me["object"] == "e158" and state7.me["method"] == "picked", state7.me
+        state7.me = {"object": "e220", "method": "walk"}
+        state7.player("e1", "stormvind", "player")
+        assert state7.me["object"] == "e220" and state7.me["method"] == "walk", state7.me
+
+        # rotation changes the file, not the session state: names and values remain available
+        rotation_dir = Path(tmp) / "rotating"
+        rotation_dir.mkdir()
+        first = rotation_dir / "first.log"
+        first.write_text("")
+        state8 = LiveState()
+        state8.me_path = Path(tmp) / "me8.json"
+        state8.me = {"object": None, "method": None}
+        stop8 = threading.Event()
+        thread8 = threading.Thread(target=tail, args=(rotation_dir, state8, stop8),
+                                    kwargs={"poll": 0.05}, daemon=True)
+        thread8.start()
+        try:
+            with open(first, "a") as handle:
+                handle.write(json.dumps({"type": "pos_samples", "items": [[1, "ABS", "e158",
+                    struct.pack(">ffH", 8786.66, 3003.97, 58).hex()]]}) + "\n")
+                handle.write(json.dumps({"type": "vitals_samples", "items": [[2, "e158",
+                    "0101461b88f3"]]}) + "\n")
+                handle.write(json.dumps({"type": "player_samples", "items": [[3, "e158",
+                    "Where Arda", "682b"]]}) + "\n")
+            deadline = time.time() + 2.0
+            while state8.objects.get("e158", {}).get("name") != "Where Arda" and time.time() < deadline:
+                time.sleep(0.05)
+            first_snapshot = state8.snapshot()
+            first_slot = first_snapshot["objects"]["e158"]
+            assert first_slot["name"] == "Where Arda" and "health" in first_slot, first_snapshot
+            second = rotation_dir / "second.log"
+            second.write_text("")
+            with open(second, "a") as handle:
+                handle.write(json.dumps({"type": "pos_samples", "items": [[4, "ABS", "e1",
+                    struct.pack(">ffH", 9000.0, 3000.0, 59).hex()]]}) + "\n")
+            deadline = time.time() + 2.0
+            while "e1" not in state8.objects and time.time() < deadline:
+                time.sleep(0.05)
+            rotated_snapshot = state8.snapshot()
+            rotated_slot = rotated_snapshot["objects"].get("e158")
+            assert rotated_slot and rotated_slot["name"] == "Where Arda", rotated_snapshot
+            assert "health" in rotated_slot and "position" in rotated_slot, rotated_snapshot
+        finally:
+            stop8.set()
+            thread8.join(1)
 
         # continuity: when the calibrated object goes quiet and another shows up where it was, take over
         state4 = LiveState()

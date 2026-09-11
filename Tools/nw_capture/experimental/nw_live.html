@@ -43,13 +43,13 @@
 <div id="right">
   <header>
     <span class="dim">objects seen</span>
-    <span class="dim" id="hint">"identify me" watches which object moves while you walk: nothing to pick
+    <span class="dim" id="hint">join entity keys mark e1 as the player. "identify me" watches which object moves while you walk: nothing to pick
       from a list. Names are provisional (the field types are not decoded yet) and elevation is the raw
       wire value.</span>
   </header>
   <div id="tableWrap">
     <table>
-      <thead><tr><th>object</th><th>name</th><th>health</th><th>mana</th><th>x</th><th>y</th><th>elev (raw)</th><th>age</th></tr></thead>
+      <thead><tr><th>object</th><th>role</th><th>name</th><th>health</th><th>mana</th><th>x</th><th>y</th><th>elev (raw)</th><th>age</th></tr></thead>
       <tbody id="rows"></tbody>
     </table>
   </div>
@@ -183,6 +183,8 @@ function draw(objects) {
 }
 
 function render(snapshot) {
+  const meInfo = snapshot.me || {};
+  if (meInfo.object) selected = meInfo.object;
   const objects = snapshot.objects || {};
   for (const [key, slot] of Object.entries(objects)) {
     if (!slot.position) continue;
@@ -205,7 +207,8 @@ function render(snapshot) {
     const age = Math.max(slot.position_at || 0, slot.vitals_at || 0);
     const p = slot.position || {};
     return `<tr class="${key === selected ? "me" : ""}" data-key="${key}">` +
-      `<td>${key.slice(0, 12)}</td><td>${slot.name || '<span class="dim">?</span>'}</td>` +
+      `<td>${key.slice(0, 12)}</td><td>${key === selected ? "player" : ""}</td>` +
+      `<td>${slot.name || '<span class="dim">?</span>'}</td>` +
       `<td>${slot.health ?? '<span class="dim">-</span>'}</td><td>${slot.mana ?? '<span class="dim">-</span>'}</td>` +
       `<td>${p.x ?? "-"}</td><td>${p.y ?? "-"}</td><td>${p.elev_raw ?? "-"}</td>` +
       `<td>${age ? (now - age).toFixed(1) + "s" : "-"}</td></tr>`;
@@ -219,7 +222,6 @@ function render(snapshot) {
       try { await fetch("/pick?key=" + encodeURIComponent(selected), { method: "POST" }); } catch (error) {}
     };
   }
-  const meInfo = snapshot.me || {};
   currentMe = objects[selected] || null;
   if (meInfo.object) {
     selected = meInfo.object;
