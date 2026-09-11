@@ -33,6 +33,54 @@ MEMBER_HEALTH = 0x01   # member mask: member 0 (HealthAmount) is present
 FIELD_HEALTH = 0x01    # its field mask: bit 0 is the float32
 
 
+def parse_members(payload: bytes):
+    """Decode what is known of one Vitals payload.
+
+    Returns a dict with any of ``health`` and ``mana`` that the payload carries, and an empty dict
+    when the payload does not use a shape we have evidence for. It never guesses: an unknown member
+    mask, field mask or ordering stops the walk and returns what was already decoded.
+    """
+    out = {}
+    index = 0
+    while index < len(payload):
+        member_mask = payload[index]
+        index += 1
+        if member_mask == 0:
+            continue
+        for bit in range(8):
+            if not member_mask >> bit & 1:
+                continue
+            if index >= len(payload):
+                return out
+            field_mask = payload[index]
+            index += 1
+            if bit == 0:
+                if field_mask & FIELD_HEALTH:
+                    if index + 4 > len(payload):
+                        return out
+                    out["health"] = struct.unpack(">f", payload[index:index + 4])[0]
+                    index += 4
+                if field_mask & 0x08:
+                    if index >= len(payload):
+                        return out
+                    index += 1
+                if field_mask & ~0x09:
+                    return out
+            elif bit == 1:
+                if field_mask & FIELD_HEALTH:
+                    if index + 4 > len(payload):
+                        return out
+                    out["mana"] = struct.unpack(">f", payload[index:index + 4])[0]
+                    index += 4
+                if field_mask & ~0x01:
+                    return out
+            else:
+                return out
+        if member_mask & ~0x03:
+            return out
+    return out if index == len(payload) else out
+
+
 def samples(log_path: Path, per_object: bool = True):
     """Yield (ts, object, health, payload) for every payload that carries the health field."""
     out = collections.defaultdict(list) if per_object else []
@@ -48,9 +96,10 @@ def samples(log_path: Path, per_object: bool = True):
             if not payload_hex:
                 continue
             payload = bytes.fromhex(payload_hex)
-            if len(payload) < 6 or not payload[0] & MEMBER_HEALTH or not payload[1] & FIELD_HEALTH:
+            decoded = parse_members(payload)
+            if "health" not in decoded:
                 continue
-            health = struct.unpack(">f", payload[2:6])[0]
+            health = decoded["health"]
             if per_object:
                 out[item[3]].append((ts, round(health, 1), payload))
             else:

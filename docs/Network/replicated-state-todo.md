@@ -147,6 +147,12 @@ bundle header, **not** inside PlayerComponent; sending it alone fails to parse t
    game's own output (the on-screen damage numbers for health, the jump arc for `distGround`, the
    dodge for stamina). A float that merely looks plausible is not evidence.
 
+For a live view during a capture: `nw_live_probe.js` is gone (it never armed), the combined probe is
+`nw_state_probe.js` itself, which now also logs `player_samples` from the PlayerComponent builder, and
+`nw_live.py --log <log or directory>` serves position, health, mana and names at `http://127.0.0.1:8765/`
+with the state as JSON. It cannot say which object is you: position, Vitals and PlayerComponent are
+three objects with no common key, so the page lets you pick one and remembers it.
+
 `nw_actions.py` plays a timed sequence (run with one dodge, stand, three spells, right-mouse
 self-drain) and writes a timeline, so a capture can be read per phase. Shift is the **dodge**, and the
 dodge is what spends stamina; that is how the player's own Vitals object is

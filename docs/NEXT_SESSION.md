@@ -332,3 +332,37 @@ point; it is not a matter of calling a function found by name.
 The input path itself is also structurally hostile to synthetic events: the game imports
 `GetRawInputData`, so `PostMessage` style events are ignored, and under Proton raw input only flows to
 the focused window, which is why focus has been needed at all.
+
+## Update 2026-09-11: the live view during a capture
+
+`Tools/nw_capture/experimental/nw_live.py` follows a probe log (or a directory of them, picking up each
+new capture on its own) and serves what it decodes:
+
+```sh
+# capture with the probe that now logs position, Vitals and player names
+.venv-capture/bin/python Tools/nw_capture/experimental/nw_capture_probe.py \
+    --probe "$PWD/Tools/nw_capture/experimental/nw_state_probe.js" --seconds 60 --label live
+# in another terminal, follow the log directory and open the page
+.venv-capture/bin/python Tools/nw_capture/experimental/nw_live.py \
+    --log Tools/nw_capture/logs --port 8765
+```
+
+The page draws a trail per object on a canvas and a table of health, mana, position and name, polling
+`/state` every 250 ms. Verified live: two samples during a capture grew from 570 to 789 position
+samples and 423 to 817 health samples with a last-line age of about one second.
+
+Three honest limits, all visible in the page rather than hidden:
+
+- **It cannot say which object is you.** Position (ALC), health and mana (Vitals) and the names
+  (PlayerComponent) are three different objects with no common key; the replica id is in the bundle
+  header. The page lets the user pick the object once and keeps it in localStorage.
+- **Names are provisional.** The name is read from `field + 0x10` up to the first non-printable byte,
+  because the field's type is not decoded; some objects show a plausible name (`SirChaos`) and some
+  show junk or nothing.
+- **Elevation is reported as `elev_raw`,** the quantised u16 as it comes off the wire: the affine
+  mapping back to world units is not established, and calling it an elevation would be a guess.
+
+`decode_vitals.py` now exposes `parse_members()` and the offline reader uses the same function, so the
+live view cannot drift from the verified payload model. Stamina is not in the live view yet: it is ALC
+`group0.bit37` and comes from the ledger, whose frames are not joined to an entity either - it needs
+the same join as the attribution above.

@@ -1,4 +1,9 @@
-// Which replicated states does the parser actually decode for this player?
+// Which replicated states does the parser actually decode for this player, plus the player names.
+//
+// Besides the state readers below it hooks the PlayerComponent builder (RVA 0x6711e90): its first
+// argument is the state, and the character name sits 16 bytes into the field registered at +0x870
+// (see docs/Network/player-component.md). Those go out as their own "player_samples" messages so the
+// live view can read position, health, mana and names from one log.
 // Hooks each state's unmarshal (addresses from the census: list_replicated_states.py) and logs
 // how many bytes it consumed. Every entry is logged even when no cursor can be found, so a
 // "the function never fires" conclusion is distinguishable from "the hook is wrong".
@@ -66,6 +71,39 @@ function hook(rva, name) {
         }
     });
 }
+const PLAYER_BUILDER = "0x6711e90";   // FUN_146711e90
+const PLAYER_NAME_FIELD = 0x870 + 0x10;  // characterName, past the type pointer
+const PLAYER_ID_FIELD = 0x7c0;           // characterId (structure: hex dump, not decoded yet)
+function readName(object) {
+    try {
+        const raw = new Uint8Array(object.add(PLAYER_NAME_FIELD).readByteArray(48));
+        let text = "";
+        for (const byte of raw) {
+            if (byte === 0 || byte < 0x20 || byte > 0x7e) break;
+            text += String.fromCharCode(byte);
+        }
+        return text;
+    } catch (e) { return ""; }
+}
+function hookPlayer() {
+    Interceptor.attach(BASE.add(PLAYER_BUILDER), {
+        onEnter(args) { this.obj = args[0]; },
+        onLeave() {
+            const object = this.obj;
+            if (object === null || object.isNull()) return;
+            // the builder registers the fields; the deserialiser fills them right after
+            setTimeout(function () {
+                try {
+                    const items = [[Date.now(), object.toString(), readName(object),
+                        Array.from(new Uint8Array(object.add(PLAYER_ID_FIELD).readByteArray(16)))
+                            .map(b => b.toString(16).padStart(2, "0")).join("")]];
+                    send({ type: "player_samples", count: 1, items: items });
+                } catch (e) {}
+            }, 150);
+        }
+    });
+}
+
 rpc.exports = {
     install: function () {
         if (armed) return "already-armed";
@@ -75,6 +113,7 @@ rpc.exports = {
             try { hook(rva, STATES[rva]); }
             catch (e) { failed.push(rva + ":" + e); }
         }
+        try { hookPlayer(); } catch (e) { failed.push("player:" + e); }
         if (failed.length) send({ type: "hook_failures", items: failed });
         timer = setInterval(flush, 1000);
         return "armed " + Object.keys(STATES).length + " states";
