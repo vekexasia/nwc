@@ -64,10 +64,13 @@ FactionComponent 3152: member 2 bit 0 u8 = faction id; `javelindata_factiondata`
 carry `FactionIntro_Syndicate/Marauders/Covenant_Recruitment`, so 1 Syndicate, 2 Marauders, 3 Covenant.
 AttributeComponent 129: `01 0f`, then five (points u32, id u32) pairs, ids 4..0, then a u8 (5..7 seen).
 There is no count: read as count + (id, points) the fifth value fell on a varint and STR came out as 7
-or worse; on 50 records of the player the pairs read 5, 5, 225, 5, 5 on ids 4..0. The player's
-attribute sheet (21:20) shows DEX 362 and INT 116 with gear, so id 2 = DEX and the values are the
-allocated points (gear adds the rest). The other four ids all read 5 and are shown as `attr<n>` until
-one of them moves; the datasheet order STR, DEX, INT, FOC, CON does not put DEX at 2.
+or worse. Ids from the player's own sheet: at 21:00:53 the pairs read 116 on id 3 and 362 on id 2
+while the screen showed INT 116 and DEX 362 (so the values are the totals, gear included); after the
+respec at 21:23:09 all five read 5 and the point put on CON at 21:23:13 appeared as `0001 00000000
+00000001` (one pending entry: id 0, 1 point) in the list that follows, so id 0 = CON. The tail is:
+u8 revision (5 -> 6 on that change), `00 01 <varint>` twice, u8 5, zeros, `01 <varint unspent points>`
+(470 -> 469), u16 pending count, (id u32, points u32) x count, u32 2. STR = 1 and FOC = 4 are the UI
+order with CON moved first, not yet seen moving.
 ManaComponent 1652 and StaminaComponent 4297 share one shape: six f32 BE in bit order (amount, max,
 winded countdown, regen delay, two multipliers).
 StatMultiplierTable 1525: `06 07`, then (u16 stat id, u32 basis points) entries, 10000 = 1.0x; a
