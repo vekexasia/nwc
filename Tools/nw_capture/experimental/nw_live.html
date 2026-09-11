@@ -48,7 +48,8 @@
   .bar.mana .fill { background: var(--player); }
   .bar.stamina .fill { background: var(--ok); }
   .bar .note { color: var(--ink-soft); font-style: italic; }
-  .cd { display: grid; grid-template-columns: 52px 1fr 48px; gap: 6px; align-items: center; font-size: 12px; margin: 3px 0; }
+  .cd { display: grid; grid-template-columns: minmax(52px, 140px) 1fr 48px; gap: 6px; align-items: center; font-size: 12px; margin: 3px 0; }
+  .cd > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .cd .track { height: 6px; border: 1px solid var(--ink); background: var(--paper-2); }
   .cd .fill { height: 100%; background: var(--warn); }
   .cd.ready .fill { background: var(--ok); }
@@ -354,7 +355,7 @@ function poseText(slot) {           // layer 0 is locomotion, layer 1 the weapon
   const p = slot.pose || {}, parts = [];
   if (slot.stance && slot.stance !== "standing") parts.push(slot.stance);
   if (slot.interacting) parts.push("gathering");
-  if (slot.mounted && !slot.npc) parts.push("mounted");
+  if (slot.mounted && !slot.npc) parts.push(slot.mount_name ? `on ${slot.mount_name}` : "mounted");
   if (p["0"] && p["0"] !== "idle") parts.push(p["0"]);
   if (p["1"] && p["1"] !== "weapon out") parts.push(p["1"]); else if (p["1"] === "weapon out" && !parts.length) parts.push("weapon out");
   return parts.join(", ");
@@ -402,7 +403,7 @@ function render(snapshot) {
   const cds = shown.cooldowns || {};
   $("cooldowns").innerHTML = Object.keys(cds).sort().map(slot => {
     const cd = cds[slot], total = Math.max(cd.expiry - cd.start, 0.001), left = Math.max(0, cd.expiry - now);
-    return `<div class="cd ${left > 0 ? "" : "ready"}"><span>slot ${slot} <span class="id">${cd.id.slice(0, 6)}</span></span>` +
+    return `<div class="cd ${left > 0 ? "" : "ready"}"><span title="${cd.id}">${cd.name && cd.name !== cd.id ? cd.name : "slot " + slot} <span class="id">${cd.name && cd.name !== cd.id ? "" : cd.id.slice(0, 6)}</span></span>` +
       `<div class="track"><div class="fill" style="width:${left > 0 ? 100 * left / total : 100}%"></div></div>` +
       `<b>${left > 0 ? left.toFixed(1) + "s" : "ready"}</b></div>`;
   }).join("") || '<div class="note" style="font-size:11px">cooldowns: none seen yet (they arrive when an ability is used)</div>';

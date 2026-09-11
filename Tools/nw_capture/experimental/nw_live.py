@@ -40,6 +40,21 @@ from decode_stamina import parse_stamina  # noqa: E402
 from decode_vitals import parse_members  # noqa: E402  the shared, verified payload model
 
 HERE_PAGE = HERE / "nw_live.html"
+sys.path.insert(0, str(HERE.parents[1] / "nw_assets"))
+try:
+    import namebook  # noqa: E402  crc32(lowercase id) -> id, built from the game's datasheets
+    NAMES = namebook.load()
+except Exception:                     # noqa: BLE001 - the book is optional
+    NAMES = {}
+
+
+def name_of(crc_hex: str) -> str:
+    """Short readable form of a datasheet id: 'Ability_VoidGauntlet_Scream' -> 'VoidGauntlet Scream'."""
+    entry = NAMES.get(crc_hex)
+    if not entry:
+        return crc_hex
+    parts = [p for p in entry["id"].split("_") if p.lower() not in ("ability", "mount", "mtx")]
+    return " ".join(parts) or entry["id"]
 
 
 def decode_abs(payload_hex: str):
@@ -285,6 +300,8 @@ class LiveState:
             for name in ("mounted", "mount_stamina"):
                 if name in decoded:
                     slot[name] = decoded[name]
+            if decoded.get("mount_id") and decoded["mount_id"] != "00000000":
+                slot["mount_name"] = name_of(decoded["mount_id"])
             slot["mount_at"] = time.time()
 
     def cooldowns(self, key: str, entries: list) -> None:
@@ -293,8 +310,8 @@ class LiveState:
             slot = self._slot(key)
             table = slot.setdefault("cooldowns", {})
             for entry in entries:
-                table[str(entry["slot"])] = {"id": entry["id"], "start": round(entry["start"], 3),
-                                             "expiry": round(entry["expiry"], 3)}
+                table[str(entry["slot"])] = {"id": entry["id"], "name": name_of(entry["id"]),
+                                             "start": round(entry["start"], 3), "expiry": round(entry["expiry"], 3)}
             self.counters["cooldown"] = self.counters.get("cooldown", 0) + len(entries)
 
     def stamina(self, key: str, decoded: dict) -> None:
