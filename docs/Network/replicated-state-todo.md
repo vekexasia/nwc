@@ -40,7 +40,18 @@ address our own static analysis names `FUN_142a327f0`
 |---|---:|---|
 | `ALCReplicatedState` | 11 | Decoded and verified: group-aware record payload, 1..9-byte mask reader, 48-property schema, `worldPosAbs`/`worldPosRel`, axis assignment cross-checked against 55739 community markers ([alc-protocol-reference.md](alc-protocol-reference.md), [decoder-state.md](decoder-state.md)) |
 | `VitalsComponentReplicatedState` | 15 | **Health decoded from live payloads and validated** against the game's own numbers; the payload is one `[member mask][field mask][fields]` block per member in the state's order, so the remaining fields are mapped member by member ([decoder-state.md](decoder-state.md), [health-field.md](health-field.md)) |
-| `PlayerComponentReplicatedState` | 3935 | **31-field table recovered from its builder, and read live**: `characterId`, `characterName`, `homeWorldId`, `platformAccountId` and 27 more ([player-component.md](player-component.md)). Not yet linked to the entity's ALC or Vitals state |
+| `PlayerComponentReplicatedState` | 3935 | **31-field table recovered from its builder, and read live**: `characterId`, `characterName`, `homeWorldId`, `platformAccountId` and 27 more ([player-component.md](player-component.md)). Linked to the entity by the record header V1 ([entity-join.md](entity-join.md)); a pet carries its owner's copy |
+| `StaminaComponentReplicatedState` | 4297 | Decoded: six f32 BE in bit order (amount, max, winded countdown, regen delay, two multipliers), 60 Hz while moving (`decode_stamina.py`) |
+| `CooldownTimersComponentReplicatedState` | 2932 | Decoded: per slot id (crc32 of the ability id), revision, expiry and start in us since 2000 (`decode_cooldowns.py`) |
+| `MountComponentReplicatedState` | 5620 | Decoded by a driven mount/dismount: owner flag + mount stamina, remote mount id (`decode_mount.py`) |
+| `ManaComponentReplicatedState` | 1652 | Same shape as stamina; the mana bar |
+| `ProgressionComponentReplicatedState` | 899 | member 0 bit 0 u32 = level |
+| `FactionComponentReplicatedState` | 3152 | member 2 bit 0 u8 = faction id (1 Syndicate, 2 Marauders, 3 Covenant per javelindata_factiondata) |
+| `AttributeComponentReplicatedState` | 129 | count + (id, points) pairs; ids 0..4 STR DEX INT FOC CON |
+| `PositionInTheWorldReplicatedState` | 13 | two f32 BE x, y then 5 bytes; the spawn position, used for camps/nodes |
+| `InteractReplicatedState` | 2930 | `01 01 01` while in an interaction (gathering, riding) |
+| `GatherableControllerReplicatedState` | 12 | presence marks a gatherable; `01 01 04/08` state |
+| `PaperdollComponentReplicatedState` 3183, `StatusEffectsComponentReplicatedState` 4236, `SocialReplicatedState` 4176, `AbilityComponent` 185 | - | Read through the **name book** (crc32 windows resolved against the datasheets: items worn, status effects, titles, perks), field tables not mapped ([NEXT_SESSION.md](../NEXT_SESSION.md) 2026-09-11 night) |
 | everything else | - | Not started |
 
 Open items on ALC itself, not new states: local-player identity and ownership, rotation/look
