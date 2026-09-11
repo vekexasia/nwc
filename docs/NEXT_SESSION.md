@@ -469,3 +469,28 @@ Next, in order: (1) make the live view default "me" to `e1` and keep the V1 -> n
 session (names arrive once, at scope entry); (2) one action per capture with the join probe
 (jump, dodge, attacks, weapon draw, mount) to fill the pose table; (3) the ALC encoder with a
 decode -> encode -> identical-bytes round trip over the captured chunks.
+
+## Update 2026-09-11 (later): live view joined, pose table started, encoder proved
+
+Done in this pass, one agent per file set so nothing collided (captures only from the main agent):
+
+- Live view (`nw_live.py`, `--check` passes): with entity keys `me` defaults to `e1`
+  (`join-default`), a manual walk/pick still wins, and a log rotation keeps names and values. Verified
+  live on port 8769 with a join capture: ten named players with health and position, `e1` as player.
+- Pose (`docs/Network/pose-state.md`): `decode_join.py --timeline 1` keeps the four slayer layers
+  apart. Two driven captures name the states: L0 idle `0x1f`, walk `0x1a`, run `0x0d`, dodge `0x0b`,
+  sprint `0x07`, stop `0x1b`, jump `0x0e`; L1 weapon draw `0x2c`, ready `0x2d`, light attack `0x21`,
+  heavy `0x27`, RMB ability `0x24`; L2 `0x2e` only during attacks. Values are still printed as raw
+  prefix-varint hex.
+- Encoder (`offline/encode_alc_state.py --check`): mask/prefix varints, grouped field framing and
+  record header re-encode 65,724 of 65,771 captured ALC chunks byte-identical (the 47 others are the
+  ones the decoder cannot consume exactly) and all 10,564 record headers of a ledger. Two prefix
+  varints on the wire were longer than minimal.
+- Framing (`docs/Network/ledger-framing-gaps.md`): jump and dodge ledgers do frame; the 10:57 walktest
+  stream opens inside a 1.9 MB message that never completes in the capture, so nothing frames. No
+  decoder change.
+
+Next: (1) decode the prefix-varint values in the pose timeline as integers; (2) block, sheathe,
+mount, swim, and the same actions with a second weapon (are L1 ids per weapon?); (3) the asset side,
+`slayerStateId` -> slayer script -> clip via nw-buddy; (4) frame/Carrier/DTLS encoders on top of the
+record encoder, then the heartbeat server, only with explicit authorization.
