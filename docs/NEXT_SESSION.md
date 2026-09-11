@@ -592,5 +592,8 @@ RMI census (it needs its own capture slot: one Frida session at a time).
   `SpellComponentReplicatedState` (2912: caster, target, caster, 1.0) and `ProjectileReplicatedState`
   (16: position, velocity, projectile def u64, owner u64). Mapping u64 -> V1 needs the entity-create
   header, which the join probe does not hook.
-- Server start trap: `pkill` + start in the same shell command left the new server dead twice; start
-  it in its own command.
+- Server restart trap: `pkill -f "nw_liv[e].py --log Tools"` in the same shell command as the start
+  line kills the shell itself (its command line contains the literal `nw_live.py --log Tools` of the
+  start). Kill in one command, start in the next.
+- Also added: death recap (killed by X, last hit, max health), the mobs targeting the player
+  (`OnSelectedAsTarget`), XP and rested pool, pose `0x15` riding.
