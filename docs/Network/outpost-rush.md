@@ -39,28 +39,55 @@ around x 1150-1400, y 10850-11250; the player entered at 21:51:13 (`OnTeleportWi
   (01, 03, 28, 40, 4a, 53, 55, 62): not a team id, more like a progress or state counter. Which point
   is Luna, Sol or Astra is not known; the three names are not on the wire in these chunks.
 
-## Not read yet (this is what the dump is for)
+## Read after the match: scoreboard, score, outposts (`decode_opr.py`, checked on the end screen)
 
-- **Team score**: 1001 and 593 never appear together in one record in the last minutes as u16, u32,
-  f32, LEB128 or prefix varint; the per-outpost points (307/403/184, 141/91/284) neither. The client
-  most likely accumulates them from the compact streams below.
-- **`GameModeReplicatedState` (2343) on entity 13**: 11,228 deltas. Shape `01 80 08 01 01 <id u32>
-  01 <seq varint> <fields>` with three recurring ids `448dd922`, `ca02dec1`, `4a6e9282` (three
-  outposts or two teams plus one), fields like `c0 08 <v>` with v climbing 16 -> 160 over seven
-  seconds and `e0 22 50 16` counters. Prefix varints (`decode_alc_state.read_prefix_varint`).
-- **`OnUpdateWarboardStats` (839)**: 1,538 messages, the per-player scoreboard deltas. Header `u16
-  version, 03`, then a prefix varint (0 or `80 02`), then blocks of `u8 count` + rows; the first
-  message (21:51:13) has 3 + 4 rows of 17 bytes (`idx` + `fa21 0038 0310` + zeros) for the 3 + 4
-  players present, i.e. the initial stat vector; later rows are `idx` + compact varint pairs of
-  variable length. Every one of the 12 deaths has a 839 message within 2 s. Neither "(stat, value)
-  pairs until 0" nor "count + pairs" parses more than 8 of 1,538 messages to the exact end, so the row
-  encoding is still open. The end-screen numbers above are the oracle: summing the right field per
-  player index must give 12 deaths and 87,390 damage for PetaWatt (team 0, index 3 in the first
-  manifest) and 16,024 score for async93.
-- `GroupDataComponentReplicatedState` (3451, 56,419 chunks), `RaidDataComponentReplicatedState` (28),
-  `OwnershipComponentReplicatedState` (3217: owner uuid string + owner name, for turrets and siege),
-  `TurretReplicatedState` (4276), `BeamAttackComponentReplicatedState` (2947), `LootDropReplicatedState`
-  (2027: the infused resources), `DetectionVolumeEventReplicatedState` (366).
+The key was the varint. Both streams use the prefix varint with **little-endian continuation**: n
+leading one bits in the first byte = n more bytes, the first byte keeps its low 7-n bits as the
+lowest bits, each following byte adds 8 bits above (`8c 16` = 0x0c | 0x16 << 6 = 1,420; `c7 8f 05` =
+7 | 0x8f << 5 | 0x05 << 13 = 45,543; `fa 21 00 38 03 10` = a 6-byte field mask). Read with a
+big-endian tail (as `decode_alc_state.read_prefix_varint` does for 3+ bytes) the totals were garbage;
+read this way every one lands on the end screen.
+
+**`OnUpdateWarboardStats` (839)**, after the facet uuid: u16 version, u8 local player index, the local
+row (mask + one varint per set bit), then two team blocks: u8 count, count x (u8 index, mask, values).
+Values are running totals. Bits: 1 score, 2 damage, 7 deaths, 21 healing, 22 damage absorbed (the
+third ranking column), 23 kills, 26 assists, 27 npc kill assists, 38 unread (0 all match). The first
+message carries a full 9-field row for every player present (16 bytes each). Block 0 is the second
+manifest list, block 1 the first (the player's team). 1,533 of 1,538 messages parse to the exact end
+(the other five are cut at the probe's 512 bytes). All 40 players' final rows equal the end screen:
+PetaWatt 1,320 / 87,390 / 12 deaths / 8 assists; async93 16,024 / 1,170,768 / 12 kills / 2 deaths /
+55 assists; Gaelron-NWA 13,356, healing 747,441; Bohemond 12,750, 20 kills, healing 4,386, absorbed
+22,340; Vaanaa, Forged Carbon, Remedy, ToTor4, P3RS3R, Gj.K. Skenderbot likewise.
+`decode_opr.py --log <log>` prints the table; `--check` holds the bytes.
+
+**`GameModeReplicatedState` (2343) on the mode entity (e13)**: the frequent delta `01 80 08 <count>
+<u8> count x (key u32, 01, seq varint, value varint)` is a map keyed by u32; the same entries appear
+inside larger deltas (`01 81 01 18 08 ff 4a6e9282 01 812e e93e1025`), found by key.
+- `4a6e9282` = **team scores**, value = own team | other team << 16: 0x25103e9 = **1001 / 593**, the
+  final score, at 22:19:15; 921 / 571 at 22:17 in the replay.
+- `448dd922` = **Luna**, `ca02dec1` = **Sol**, `06a8de5f` = **Astra**: value bytes (owner team or ff,
+  capturing team or ff, capture progress). Names by attribution: score ticks credited to each key
+  while owned came out 339 / 459 / 199 for the player's team against 307 / 403 / 184 on the end
+  screen (kill points spread in), 143 / 106 / 334 against 141 / 91 / 284 for the other team; the
+  order is unambiguous. Team score = outposts + kills: 307 + 403 + 184 + 107 = 1001 exactly.
+- Other keys in the map: e78c48f6 (1 once), 089f87c8, 10f630c5, 6c97151e (64-bit values, unread).
+  The 257-byte `01 c0 00` snapshots hold the same keys with 8-byte values.
+
+The Ghidra side (subagent report in private/decoder-state/opr/REPORT.md): `GameModeReplicatedState`
+constructor `0x14329b160` registers gameModeId, gameModeMapId, participantFacetRefs,
+participantStatuses, participantTeamIndexes, participantCharacterIds, raidIds, **syncedTimers**,
+mapOrigin, mapSizeInTiles, tileUiFilenameIdAndRotation, tileVisited, linkedMode, globalAfflictionData
+and ten Event slots (registration helper `FUN_141775c60`); which registered property the keyed map is
+(syncedTimers is the natural candidate) is not proven. The `Warboard` strings in the binary
+(`WarboardStatsEntry`, `WarboardStatData`, `ReusableScoreboard*`, `0x1482b2c90..0x1482b3840`) are
+the AZ reflection of the client scoreboard; the RMI unmarshal was not located.
+
+## Not read yet
+
+- `CapturePointReplicatedState` (333) on the static outpost entities: which entity is Luna, Sol or
+  Astra (the map above has no position); the 3-byte delta byte.
+- The other map keys, the GameMode member bit order, `GroupData` (3451), `RaidData` (28), `Ownership`
+  (3217), `Turret` (4276), `BeamAttack` (2947), `LootDrop` (2027), `DetectionVolumeEvent` (366).
 
 ## Message inventory during the match (rmi_samples from 21:51:13)
 
