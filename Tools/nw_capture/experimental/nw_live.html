@@ -147,6 +147,8 @@ const tileUrl = (c, x, y) =>
   `https://aeternum-map.th.gl/assets/newworld_vitaeeterna/map_l${c}_y${String(y).padStart(3, "0")}_x${String(x).padStart(3, "0")}.webp?v=7`;
 const toPx = p => [p.x * PX, -p.y * PX];          // world -> global pixel space (y flipped)
 
+// javelindata_factiondata: Faction1 = Syndicate, Faction2 = Marauders, Faction3 = Covenant (RequiredAchievementId column)
+const FACTIONS = { 1: "Syndicate", 2: "Marauders", 3: "Covenant" };
 const MAX_POINTS = 4000, MAX_LEG = 25, STALE_S = 90;   // an entity silent for STALE_S leaves the map (its row stays, dimmed)
 let now = Date.now() / 1000;
 const ageOf = slot => now - Math.max(slot.position_at || 0, slot.vitals_at || 0);
@@ -412,7 +414,7 @@ function render(snapshot) {
   $("stNote").textContent = shown.winded_s > 0 ? "winded" : (shown.regen_delay_s > 0 ? "regen delay" : "");
   $("hudGear").textContent = [(shown.weapons || []).length ? "weapons: " + shown.weapons.join(", ") : "",
     (shown.effects || []).length ? "effects: " + shown.effects.slice(-6).join(", ") : "", shown.level ? `level ${shown.level}` : "",
-    shown.faction ? `faction ${shown.faction}` : ""].filter(Boolean).join("  ·  ");
+    shown.faction ? (FACTIONS[shown.faction] || `faction ${shown.faction}`) : ""].filter(Boolean).join("  ·  ");
   $("mountText").textContent = shown.mounted ? `mounted${shown.mount_stamina != null ? ", horse stamina " + shown.mount_stamina : ""}` : "";
   $("hudPos").textContent = shown.position ? `x ${shown.position.x}  y ${shown.position.y}  elev ${shown.position.elevation ?? shown.position.elev_raw} m` : "";
   // the four slayer layers as the wire has them: state id (hex) and sequence id, so an unknown one can be reported

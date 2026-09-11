@@ -68,8 +68,17 @@ def name_of(crc_hex: str) -> str:
     entry = NAMES.get(crc_hex)
     if not entry:
         return crc_hex
+    if entry.get("text"):
+        return entry["text"]          # the English string of the sheet's DisplayName
     parts = [p for p in entry["id"].split("_") if p.lower() not in ("ability", "mount", "mtx")]
     return " ".join(parts) or entry["id"]
+
+
+def text_of(identifier: str) -> str:
+    """English name of a datasheet id when the book has it, else the id."""
+    import zlib
+    entry = NAMES.get(f"{zlib.crc32(identifier.lower().encode()):08x}")
+    return entry["text"] if entry and entry.get("text") else identifier
 
 
 def decode_abs(payload_hex: str):
@@ -313,7 +322,7 @@ class LiveState:
         with self.lock:
             slot = self._slot(key)
             current = slot.setdefault(field, [])
-            for value in ids:
+            for value in map(text_of, ids):
                 if value in current:
                     current.remove(value)
                 current.append(value)

@@ -21,6 +21,7 @@ from datasheet import read  # noqa: E402
 import pak_extract  # noqa: E402
 
 BOOK = pak_extract.OUT / "namebook.json"
+LOC = pak_extract.OUT / "localization/en-us"
 SHEETS = pak_extract.OUT / "sharedassets/springboardentitites/datatables"
 IDENT = re.compile(r"^[A-Za-z0-9_.\-+:]{2,96}$")
 NAME_COLUMNS = ("DisplayName", "Name", "Description")
@@ -30,16 +31,31 @@ def crc(text: str) -> str:
     return f"{zlib.crc32(text.lower().encode()):08x}"
 
 
-def build() -> dict:
-    if not SHEETS.exists() or len(list(SHEETS.rglob("*.datasheet"))) < 100:
-        decompress = pak_extract.oodle()
-        for pak in pak_extract.paks("SharedDataStrm*.pak"):
-            for info in pak_extract.matching(pak, [r"datatables/.*\.datasheet$"]):
-                target = pak_extract.OUT / info.filename
-                if target.exists():
-                    continue
+def extract(pak_glob: str, pattern: str, minimum: int, root: Path) -> None:
+    if root.exists() and len(list(root.rglob("*"))) >= minimum:
+        return
+    decompress = pak_extract.oodle()
+    for pak in pak_extract.paks(pak_glob):
+        for info in pak_extract.matching(pak, [pattern]):
+            target = pak_extract.OUT / info.filename
+            if not target.exists():
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(pak_extract.read_entry(pak, info, decompress))
+
+
+def localization() -> dict:
+    """English strings, '@key' -> text, from localization/en-us/*.loc.xml (184 files, 25 MB)."""
+    extract("*.pak", r"^localization/en-us/.*\.loc\.xml$", 100, LOC)
+    strings = {}
+    for path in LOC.glob("*.loc.xml"):
+        for match in re.finditer(r'<string key="([^"]+)"[^>]*>(.*?)</string>', path.read_text("utf-8", "replace"), re.S):
+            strings[match.group(1).lower()] = match.group(2)
+    return strings
+
+
+def build() -> dict:
+    extract("SharedDataStrm*.pak", r"datatables/.*\.datasheet$", 100, SHEETS)
+    strings = localization()
     book = {}
     for path in sorted(SHEETS.rglob("*.datasheet")):
         try:
@@ -54,9 +70,11 @@ def build() -> dict:
             for column, value in zip(columns, row):
                 if isinstance(value, str) and IDENT.match(value) and not value.startswith("@"):
                     key = crc(value)
-                    if key not in book:
+                    text = strings.get(display[1:].lower(), "") if isinstance(display, str) and display.startswith("@") else ""
+                    # the sheet that names the row wins over one that merely references the id
+                    if key not in book or (text and not book[key]["text"]):
                         book[key] = {"id": value, "sheet": path.stem.replace("javelindata_", ""),
-                                     "column": column, "display": display if isinstance(display, str) else ""}
+                                     "column": column, "display": display if isinstance(display, str) else "", "text": text}
     BOOK.write_text(json.dumps(book, separators=(",", ":")))
     return book
 
