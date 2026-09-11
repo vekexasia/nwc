@@ -10,7 +10,7 @@ player's own entity ends in the same 8 bytes (`31df13d046e908f8` on 2026-09-11).
 | 4118 | ChatComponentClientFacet_ReceiveChatMessage | u8-length strings: sender character uuid (36 chars), sender name; 6 bytes (byte 0 = channel, 2 seen); text; 12 zero bytes; 01; Steam id string; 01 03 |
 | 293 | ChatComponentClientFacet_ReceiveBatchedChatMessages | u8 count, then the same records |
 | 3601 | VitalsComponentClientFacet_OnDamage | receiver id u64, flags u16, damage / receiver max health f32, hit position xyz f32, u8 count, count x (damage type u8, amount f32, f32 unread) |
-| 2071 | DamageReceiverComponentClientFacet_OnDamageDealt | source id u64 byte-reversed, target id u64, source id, attack id u64 (zero on damage-over-time ticks, 1 s apart), flags u16, u8 count, entries as above |
+| 2071 | DamageReceiverComponentClientFacet_OnDamageDealt | source id u64 byte-reversed, target id u64, source id, attack id u64 (zero on basic shots and on damage-over-time ticks), flags u16 (0002 on the 1 s ticks; 0x2100 / 0x6100 / 0x2900 / 0xa100 on direct hits, 110 hits at 20:45-21:07), u8 count, entries as above |
 | 4299 | VitalsComponentClientFacet_ClientSyncDeathRecap | u8 length, the killer's vitals name key (`@Invasion_Spearman_VitalsName`, English through the name book's display column), u32, u16, f32 last hit (257.0), f32 the player's max health (9237.0), then 1.0 multipliers |
 | 2415 / 3916 | AITargetableComponentClientFacet_OnSelectedAsTarget / OnUnSelectedAsTarget | the u64 id of the mob that starts / stops targeting the player; the page lists them as "targeted by", named when the id was bound by a dealt hit |
 | 2570 | ActionListComponentClientFacet_OnServerSpreadshotProcessed | pellet records (blunderbuss) |

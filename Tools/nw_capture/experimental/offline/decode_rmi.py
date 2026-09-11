@@ -124,7 +124,9 @@ def parse_damage_taken(payload: bytes):
 def parse_damage_dealt(payload: bytes):
     """DamageReceiverComponentClientFacet_OnDamageDealt (2071), sent to the player for hits the
     player lands: source id u64 (the player's, byte-reversed), target id u64, source id again, an
-    attack/ability id u64 (zero for the 1 s ticks of a damage over time), flags u16, then the entries.
+    attack/ability id u64 (zero for basic shots and for the 1 s ticks of a damage over time, which carry
+    flags 0002; direct hits carry 0x2100, 0x6100, 0x2900, 0xa100: bits 0x4000/0x0800/0x8000 unread), then
+    the entries.
     A weapon with an elemental gem lands two entries per hit (05 1158.8 and 0e 392.7)."""
     if len(payload) < 16 + 32 + 2 + 1:
         return None

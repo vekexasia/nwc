@@ -675,7 +675,7 @@ def apply_line(line: str, state: LiveState) -> None:
                     state.hit({"key": "dealt", "name": "you hit", "target": dealt["target"],
                                "delta": -round(sum(e["amount"] for e in dealt["entries"])),
                                "types": [DAMAGE_TYPES.get(e["type"], str(e["type"])) for e in dealt["entries"]],
-                               "dot": dealt["attack"] == "0" * 16})
+                               "dot": dealt["flags"] == 2})    # 1 s ticks: flags 0002, attack id 0; basic shots also carry id 0
     elif kind == "vitals_samples":
         for item in items:
             if len(item) < 3:
