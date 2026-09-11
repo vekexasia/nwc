@@ -608,3 +608,19 @@ RMI census (it needs its own capture slot: one Frida session at a time).
   streams (`GameModeReplicatedState` e13, `OnUpdateWarboardStats` 839) not parsed yet; the oracle
   values are written down. Attribute ids closed (4 INT, 3 DEX, 2 STR, 1 FOC, 0 CON).
 - Capture stopped at 22:21; the live server is down (restart without `--auto-capture` unless wanted).
+
+## Update 2026-09-12 (00:05): Outpost Rush read to the byte
+
+- `decode_opr.py`: the scoreboard RMI (839) and the GameMode map (2343) decoded; every total on the
+  end screen reproduced (40 players, score / kills / deaths / assists / damage / healing / absorbed),
+  team score 1001 / 593, outposts Luna / Sol / Astra with owner, capturing team and progress.
+- The lesson: these streams use the prefix varint with **little-endian continuation**; the ALC reader's
+  big-endian tail (3+ bytes) is not universal. `decode_alc_state.read_prefix_varint` may need the same
+  check against a known 3-byte ALC value.
+- Live page: Outpost Rush card (score, outposts, running leaderboard), outposts named on the map,
+  `--replay --speed N --replay-from HH:MM:SS` to watch a finished log. Screenshot proof at 22:05 of
+  the match in /tmp/nwc/opr_replay2.png (regenerate with chromium --headless against :8770).
+- Ghidra subagent report: private/decoder-state/opr/REPORT.md (GameModeReplicatedState property list;
+  the warboard unmarshal was not located, the data cracked it instead).
+- Still open: GameMode member bit order, the other map keys (089f87c8, 10f630c5, 6c97151e), GroupData
+  (3451), RaidData (28), Turret / BeamAttack / LootDrop states, which 333 entities are gates.

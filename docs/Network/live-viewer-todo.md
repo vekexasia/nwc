@@ -31,6 +31,9 @@ fixed (five (points, id) pairs). Still not shown for e1: the equipped weapons (t
 carries item instances, not definition ids; the inventory stream `ItemVersionData`/`JsonItemData`
 is cut at 160 bytes by the probe).
 
+Outpost Rush (2026-09-11 evening, [outpost-rush.md](outpost-rush.md)): teams, score, outposts and the
+running scoreboard on the page, replay mode for finished logs.
+
 Still open: the numeric slayer state ids have no table in binary or assets
 ([pose-state-names.md](pose-state-names.md)); the player's own HealthMax (the Vitals full state gives
 `HealthBaseMax`, exact for mobs, below the live max for players); StatMultiplierTable stat ids are an
