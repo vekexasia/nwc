@@ -32,7 +32,7 @@ KEYS = {
     "space": e.KEY_SPACE, "shift": e.KEY_LEFTSHIFT, "ctrl": e.KEY_LEFTCTRL,
     "e": e.KEY_E, "q": e.KEY_Q, "tab": e.KEY_TAB, "esc": e.KEY_ESC,
     "1": e.KEY_1, "2": e.KEY_2, "3": e.KEY_3, "4": e.KEY_4, "5": e.KEY_5,
-    "f": e.KEY_F, "m": e.KEY_M, "enter": e.KEY_ENTER,
+    "r": e.KEY_R, "f": e.KEY_F, "m": e.KEY_M, "enter": e.KEY_ENTER,
 }
 
 
