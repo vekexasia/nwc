@@ -92,6 +92,7 @@
     <button id="zoomIn">+</button><button id="zoomOut">&minus;</button>
     <button id="identify" title="watch which entity moves while you walk">identify (walk 3 s)</button>
     <button id="others" class="on" title="show unnamed entities">others</button>
+    <button id="reset" title="forget every entity and trail (a new game session reuses the keys)">reset</button>
   </div>
   <div class="card" id="hud">
     <h1 id="hudName">no player yet <small id="hudKey"></small></h1>
@@ -307,6 +308,10 @@ $("asMe").onclick = pickAsMe;
 function setFollow(on) { view.follow = on; $("follow").classList.toggle("on", on); if (on) draw(); }
 $("follow").onclick = () => setFollow(!view.follow);
 $("others").onclick = () => { view.showOthers = !view.showOthers; $("others").classList.toggle("on", view.showOthers); draw(); };
+$("reset").onclick = async () => {
+  try { await fetch("/reset", { method: "POST" }); } catch (error) {}
+  trails.clear(); objects = {}; focused = ""; render();
+};
 $("drawerToggle").onclick = () => $("aside").classList.toggle("closed");
 $("identify").onclick = async e => {
   e.target.disabled = true; e.target.textContent = "walk now...";

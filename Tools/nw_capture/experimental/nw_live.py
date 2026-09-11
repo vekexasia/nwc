@@ -162,6 +162,14 @@ class LiveState:
             self._save_me()
             return dict(self.me)
 
+    def reset(self) -> dict:
+        """Forget every entity (a new game session reuses the keys); identity and maxima are kept."""
+        with self.lock:
+            dropped = len(self.objects)
+            self.objects.clear()
+            self.calibration = None
+            return {"dropped": dropped}
+
     def pick_by_name(self, name: str) -> dict:
         """The same, by character name: the join attaches names to entities, so a name is enough."""
         with self.lock:
@@ -470,6 +478,8 @@ def make_handler(state: LiveState):
                     self._answer(state.pick(query["key"][0]))
                 else:
                     self._answer({"error": "pass key= or name="})
+            elif self.path.startswith("/reset"):
+                self._answer(state.reset())
             elif self.path.startswith("/calibrate"):
                 state.start_calibration(3.0)
                 time.sleep(3.2)
@@ -590,6 +600,12 @@ def self_check() -> int:
         blob = json.dumps(state3.snapshot(), allow_nan=False)      # must not raise
         assert "NaN" not in blob and "Infinity" not in blob, blob
         assert state3.snapshot()["objects"]["0xnan"].get("mana") == 12.5, state3.snapshot()
+
+        # reset drops the entities and keeps who you are
+        state13 = LiveState()
+        state13.me_path = Path(tmp) / "me13.json"; state13.max_path = Path(tmp) / "max13.json"; state13.maxima = {}
+        state13.player("e1", "Tester", "id"); state13.me = {"object": "e1", "method": "picked"}
+        assert state13.reset() == {"dropped": 1} and not state13.objects and state13.me["object"] == "e1"
 
         # the bar ceiling is the highest value seen and survives a restart
         state11 = LiveState()
