@@ -7,14 +7,14 @@ const mod = Process.findModuleByName("NewWorld.exe") ||
     Process.enumerateModules().find(m => m.name.toLowerCase().indexOf("newworld") >= 0);
 if (mod === null) throw new Error("NewWorld.exe module not found");
 const BASE = mod.base;
-const STATES = {
-    "0x2a327f0": "ALCReplicatedState",
-    "0x65b0dd0": "VitalsComponentReplicatedState",
-    "0x659bbf0": "DamageReceiverComponentReplicatedState",
-    "0x65b5ea0": "GritReplicatedState",
-    "0x5ce5f90": "PositionInTheWorldReplicatedState",
-    "0x5ce5f30": "GatherableControllerReplicatedState",
-    "0x65a60b0": "ProjectileReplicatedState",
+const STATES = {   // RVAs, i.e. absolute address minus the image base 0x140000000
+    "0x2a433d0": "CONTROL-worldPosAbs-reader",
+    "0x6160ae0": "Vitals-deserialiser-3stage",
+    "0x17b4110": "Vitals-stage-90-mask",
+    "0x17b3e90": "Vitals-stage-a0-member",
+    "0x17b4320": "Vitals-stage-b0-delta",
+    "0x671e040": "Vitals-object-builder",
+    "0x65b0dd0": "Vitals-registry-unmarshal",
 };
 const buf = [];
 const calls = {};
@@ -24,27 +24,28 @@ function flush() { if (buf.length) send({ type: "state_calls", count: buf.length
 function cursorOf(arg) {
     try {
         const cursor = arg.add(0x10).readPointer();
-        // a plausible cursor lives in a mapped range and is not zero
         if (cursor.isNull() || cursor.compare(ptr(0x1000)) < 0) return null;
         return cursor;
     } catch (e) { return null; }
+}
+function ctxOf(args) {            // the reader context of these state readers is arg 1 or 2
+    for (const i of [1, 2, 0, 3]) {
+        const c = cursorOf(args[i]);
+        if (c !== null) return [args[i], c];
+    }
+    return [null, null];
 }
 function hook(rva, name) {
     Interceptor.attach(BASE.add(parseInt(rva, 16)), {
         onEnter(args) {
             entries++;
             calls[name] = (calls[name] || 0) + 1;
-            this.ctx = null; this.before = null; this.rawArgs = [];
-            for (let i = 0; i < 4; i++) {
-                const a = args[i];
-                this.rawArgs.push(a ? a.toString() : "0");
-                if (this.ctx === null && a) {
-                    const c = cursorOf(a);
-                    if (c) { this.ctx = a; this.before = c; }
-                }
-            }
+            this.obj = args[0] ? args[0].toString() : "";
+            const found = ctxOf(args);
+            this.ctx = found[0]; this.before = found[1];
+            this.rawArgs = [this.obj];
             if (this.before === null) {
-                buf.push([Date.now(), name, -1, "", this.rawArgs.join(",")]);
+                buf.push([Date.now(), name, -1, this.obj, ""]);
                 if (buf.length >= 100) flush();
             }
         },
@@ -60,7 +61,7 @@ function hook(rva, name) {
                     .map(b => b.toString(16).padStart(2, "0")).join("");
             } catch (e) { raw = ""; }
             withCursor++;
-            buf.push([Date.now(), name, consumed, raw, this.rawArgs.join(",")]);
+            buf.push([Date.now(), name, consumed, this.obj, raw]);
             if (buf.length >= 100) flush();
         }
     });
@@ -69,7 +70,12 @@ rpc.exports = {
     install: function () {
         if (armed) return "already-armed";
         armed = true;
-        for (const rva in STATES) hook(rva, STATES[rva]);
+        const failed = [];
+        for (const rva in STATES) {
+            try { hook(rva, STATES[rva]); }
+            catch (e) { failed.push(rva + ":" + e); }
+        }
+        if (failed.length) send({ type: "hook_failures", items: failed });
         timer = setInterval(flush, 1000);
         return "armed " + Object.keys(STATES).length + " states";
     },
