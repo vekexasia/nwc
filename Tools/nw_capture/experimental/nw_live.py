@@ -392,7 +392,7 @@ class LiveState:
         if key is None:
             return entry
         slot = self.objects.get(key, {})
-        return {**entry, "target_key": key, "target_name": slot.get("name") or " ".join(slot.get("vitals_ids", [])[:1]) or key}
+        return {**entry, "target_key": key, "target_name": slot.get("name") or " ".join(slot.get("vitals_ids", [])[-1:]) or key}
 
     def chat(self, message: dict) -> None:
         with self.lock:
