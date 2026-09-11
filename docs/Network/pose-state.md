@@ -43,6 +43,15 @@ time -> first frame with the new state (the hook stamps arrive 0.1-0.15 s after 
 | L1 | `0x27` (39), seq `0x60` | left held 1.2 s (heavy attack): follows `0x21`, 0.6 s, then `0x2d` | poseB 11:50:01.8 |
 | L1 + L2 | `0x24` (36), seq `0x8142` -> `0x9842` -> `0x9142`; L2 `0x2e` seq `0x9806` | right held 2 s (weapon RMB ability): sequence advances while held, `0x2d` on release | poseB 11:50:08.8 - 10.9 |
 
+Observed by the player on the live page (14:37-14:41, weapon of that moment, ids are per weapon
+script): L0 `0x0a` attack, L0 `0x08` ability, L1 `0x25` block. Repeated jumps show `0x0e` -> `0x0c` ->
+`0x1a`: `0x0c` is the landing, not a sprint state as first written.
+
+**Crouch and prone are not states.** They are sequences inside idle (`slayerSequenceId[L0]` `bf36` ->
+`bc3b` crouching, `822f` -> `aa3f` going prone, `a33f` standing) and a stance byte, `group0.bit43`:
+`0x89` crouched, `0x49` prone, `0x09` standing (bits 0x80 and 0x40 on top of a base 0x09). The viewer
+reads the stance byte.
+
 Layer 2 is set only during an attack (`0x2e`, two sequences seen), so it looks like the attack or
 hit-volume layer; layer 3 never changed. Open: the sub-state `0x0c`, the `0x1a/0xaa2f` return inside a
 sprint, and the names of the clips, which are in the assets, not here.

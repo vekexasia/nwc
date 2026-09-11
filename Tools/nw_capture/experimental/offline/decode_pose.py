@@ -18,10 +18,16 @@ from decode_alc_state import decode_record_payload, read_prefix_varint  # noqa: 
 
 LAYER_NAMES = {
     0: {0x1f: "idle", 0x1a: "walking", 0x0d: "running", 0x0b: "dodge", 0x07: "sprint",
-        0x0c: "sprint", 0x1b: "stopping", 0x0e: "jump"},
+        0x0c: "landing", 0x1b: "stopping", 0x0e: "jump",
+        # observed by the player on the live page with the weapon held at 14:37 (ids are per weapon script)
+        0x0a: "attack", 0x08: "ability"},
     1: {0x2c: "drawing weapon", 0x2d: "weapon out", 0x21: "light attack", 0x27: "heavy attack",
-        0x24: "ability"},
+        0x24: "ability", 0x25: "block"},
 }
+# group0.bit43 is a stance byte: 0x80 crouched, 0x40 prone, 0x09 the base seen standing (crouch and
+# prone are sequences inside the idle state, not state changes, so the state id alone misses them)
+STANCE_BIT = 43
+STANCE_FLAGS = ((0x80, "crouched"), (0x40, "prone"))
 # reader-vector bits 13..24 are the four (stateId, stateIdStarted, sequenceId) triplets
 STATE_ID_BITS = {13: 0, 16: 1, 19: 2, 22: 3}
 
@@ -69,6 +75,8 @@ def pose_from_payload(payload: bytes):
             q = quaternion(chunk)
             if q is not None:
                 out["heading"] = round(heading_deg(q), 1)
+        elif bit == STANCE_BIT and len(chunk) == 1:
+            out["stance"] = next((label for flag, label in STANCE_FLAGS if chunk[0] & flag), "standing")
         elif layer is not None and name == "slayerStateId":
             state_id, size = read_prefix_varint(chunk, 0)
             if size == len(chunk):
@@ -100,6 +108,10 @@ def check():
     assert quaternion(bytes.fromhex("46")) is None and quaternion(bytes.fromhex("469600")) is None
     mask = encode_mask_varint((1 << 0) | (1 << 1) | (1 << 11))
     assert pose_from_payload(bytes([0x01]) + mask + bytes([0x4b, 0x1c, 0x46, 0x96])) == {"heading": -104.3}
+    mask = encode_mask_varint((1 << 0) | (1 << 1) | (1 << 43))
+    assert pose_from_payload(bytes([0x01]) + mask + bytes([0x4b, 0x1c, 0x89])) == {"stance": "crouched"}
+    assert pose_from_payload(bytes([0x01]) + mask + bytes([0x4b, 0x1c, 0x49])) == {"stance": "prone"}
+    assert pose_from_payload(bytes([0x01]) + mask + bytes([0x4b, 0x1c, 0x09])) == {"stance": "standing"}
     print("decode_pose check ok")
 
 

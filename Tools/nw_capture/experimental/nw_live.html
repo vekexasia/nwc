@@ -346,6 +346,7 @@ $("identify").onclick = async e => {
 // ------------------------------------------------------------------ state
 function poseText(slot) {           // layer 0 is locomotion, layer 1 the weapon; idle alone says nothing worth ink
   const p = slot.pose || {}, parts = [];
+  if (slot.stance && slot.stance !== "standing") parts.push(slot.stance);
   if (slot.interacting) parts.push("gathering");
   if (slot.mounted && !slot.animal) parts.push("mounted");
   if (p["0"] && p["0"] !== "idle") parts.push(p["0"]);

@@ -254,6 +254,8 @@ class LiveState:
                 table[str(layer)] = value["name"]
             if "heading" in decoded:
                 slot["heading"] = decoded["heading"]
+            if "stance" in decoded:
+                slot["stance"] = decoded["stance"]
             slot["pose_at"] = time.time()
             self.counters["pose"] = self.counters.get("pose", 0) + 1
 
@@ -721,6 +723,10 @@ def self_check() -> int:
         record = (bytes([0x01]) + mask + bytes([0x4b, 0x1c, 0x46, 0x96])).hex()
         apply_line(json.dumps({"type": "join_samples", "items": [[5, 5, 16, 11, "0x0", len(record) // 2, record]]}), state10)
         assert state10.objects["e5"]["heading"] == -104.3, state10.objects["e5"]
+        mask = encode_mask_varint((1 << 0) | (1 << 1) | (1 << 43))
+        record = (bytes([0x01]) + mask + bytes([0x4b, 0x1c, 0x89])).hex()
+        apply_line(json.dumps({"type": "join_samples", "items": [[5, 5, 16, 11, "0x0", len(record) // 2, record]]}), state10)
+        assert state10.objects["e5"]["stance"] == "crouched", state10.objects["e5"]
         apply_line(json.dumps({"type": "join_samples", "items": [
             [6, 5, 62, 5620, "0x0", 11, "02100118d443b5eded1434"],
             [7, 8, 62, 5620, "0x0", 12, "0c0100000000030400000000"]]}), state10)
