@@ -39,7 +39,8 @@ from decode_cooldowns import parse_cooldowns  # noqa: E402
 from decode_mount import parse_mount  # noqa: E402
 from decode_pose import pose_from_payload  # noqa: E402
 from decode_rmi import (DAMAGE_TYPES, parse_chat, parse_chat_batch, parse_damage_dealt, parse_damage_taken,  # noqa: E402
-                        parse_warboard_manifest, player_uuid_name)
+                        parse_warboard_manifest, parse_warboard_manifest_delta, player_uuid_name)
+from decode_opr import OUTPOSTS, SCORE_KEY, find_map_entries, outpost_state, parse_warboard_stats, team_scores  # noqa: E402
 from decode_stamina import parse_stamina  # noqa: E402
 from decode_vitals import parse_full_state, parse_members  # noqa: E402  the shared, verified payload model
 
@@ -121,6 +122,9 @@ class LiveState:
         self.net_ids: dict[str, str] = {}   # OnDamageDealt target id (u64 hex) -> entity key, learned from health deltas
         self.targeted_by: dict[str, float] = {}   # AITargetable OnSelectedAsTarget ids (u64 hex) -> at
         self.teams: dict[str, int] = {}     # warboard manifest: character uuid -> team index (Outpost Rush)
+        self.team_slots: dict[tuple, str] = {}   # (team, index) -> uuid, for the scoreboard rows
+        self.board: dict[tuple, dict] = {}       # (team, index) -> running totals from OnUpdateWarboardStats
+        self.opr: dict = {}                      # score (ours, theirs) and outposts from the game-mode map
         self.pending_dealt: list[tuple[float, float, str]] = []   # (at, amount, target id) awaiting a matching delta
 
         self.history: dict[str, list[tuple[float, float, float]]] = {}
@@ -413,9 +417,40 @@ class LiveState:
             slot["name"] = name
             slot["npc"] = False
 
-    def set_teams(self, teams: dict) -> None:
+    def set_teams(self, teams: dict, slots: dict | None = None) -> None:
         with self.lock:
             self.teams = dict(teams)
+            if slots:
+                self.team_slots.update(slots)
+
+    def add_team_members(self, added: dict) -> None:
+        with self.lock:
+            for uuid_hex, (team, slot) in added.items():
+                self.teams[uuid_hex] = team
+                self.team_slots[(team, slot)] = uuid_hex
+
+    def warboard(self, parsed: dict) -> None:
+        """Running totals per (manifest team, index); block b of the message is manifest list 1 - b."""
+        with self.lock:
+            for block, rows in enumerate(parsed["teams"]):
+                for player, values in rows:
+                    self.board.setdefault((1 - block, player), {}).update(values)
+
+    def opr_map(self, entries: dict) -> None:
+        with self.lock:
+            for key, value in entries.items():
+                if key == SCORE_KEY:
+                    self.opr["score"] = team_scores(value)
+                elif key in OUTPOSTS:
+                    self.opr.setdefault("outposts", {})[OUTPOSTS[key]] = outpost_state(value)
+
+    def _board_view(self) -> list:
+        names = {v.get("uuid"): v.get("name") for v in self.objects.values() if v.get("uuid")}
+        rows = []
+        for (team, slot), values in self.board.items():
+            uuid_hex = self.team_slots.get((team, slot))
+            rows.append({"team": team, "index": slot, "name": names.get(uuid_hex) or (uuid_hex or "?")[:8], **values})
+        return sorted(rows, key=lambda r: -r.get("score", 0))
 
     def targeted(self, net_id: str, selected: bool) -> None:
         with self.lock:
@@ -559,6 +594,7 @@ class LiveState:
                 "objects": {k: ({**v, "team": self.teams[v["uuid"]]} if self.teams and v.get("uuid") in self.teams else v)
                             for k, v in sorted(self.objects.items())},
                 "my_team": self.teams.get(self.objects.get("e1", {}).get("uuid", "")) if self.teams else None,
+                "opr": {**self.opr, "board": self._board_view()} if self.opr or self.board else None,
                 # the player's own lines survive the flood of other mobs' health deltas
                 "feed": [self._with_target(f) for f in sorted(
                     [f for f in self.feed if f["key"] in ("e1", "dealt", "death")][-20:]
@@ -657,6 +693,10 @@ def apply_line(line: str, state: LiveState) -> None:
                 state.position_static(f"e{item[1]}", x, y)
             elif item[3] == 12:
                 state.info(f"e{item[1]}", gatherable=True)
+            elif item[3] == 2343:
+                entries = find_map_entries(bytes.fromhex(item[6]))
+                if entries:
+                    state.opr_map(entries)
             elif item[3] == 333:
                 # CapturePointReplicatedState (Outpost Rush outposts, static entities): the 3-byte delta
                 # `01 02 xx` is member 1; 01 and 40 seen, meaning open (ownership or contest)
@@ -689,9 +729,30 @@ def apply_line(line: str, state: LiveState) -> None:
             elif item[1] == 1628 and len(item[2]) >= 34:
                 state.self_uuid = str(uuid.UUID(hex=item[2][2:34]))
             elif item[1] == 3530 and len(item[2]) >= 40:
-                teams = parse_warboard_manifest(bytes.fromhex(item[2]))
+                body = bytes.fromhex(item[2])
+                teams = parse_warboard_manifest(body)
                 if teams:
-                    state.set_teams(teams)
+                    # the same lists, kept by (team, index) for the scoreboard rows
+                    slots, index, team = {}, 18, 0
+                    while index + 2 <= len(body):
+                        count = struct.unpack(">H", body[index:index + 2])[0]
+                        index += 2
+                        uuids = [body[index + 1 + 17 * k:index + 17 + 17 * k].hex() for k in range(count)]
+                        index += 17 * count
+                        for uuid_hex, slot in zip(uuids, body[index:index + count]):
+                            slots[(team, slot)] = uuid_hex
+                        index += count + 2
+                        team += 1
+                    state.set_teams(teams, slots)
+            elif item[1] == 2968 and len(item[2]) >= 40:
+                added = parse_warboard_manifest_delta(bytes.fromhex(item[2]))
+                if added:
+                    state.add_team_members(added)
+            elif item[1] == 839 and len(item[2]) > 38:
+                try:
+                    state.warboard(parse_warboard_stats(bytes.fromhex(item[2])))
+                except (ValueError, IndexError):
+                    pass
             elif item[1] in (2415, 3916) and len(item[2]) >= 48:
                 state.targeted(item[2][32:48], item[1] == 2415)
             elif item[1] == 4299 and len(item[2]) >= 36:
@@ -1095,6 +1156,15 @@ def self_check() -> int:
             "050f981a9106cb4cf786a9943daa1e883305eedcb69e5ad449788a9fb717d1896958059f2261a76e9d4e3cb1e6d0a68a5d937200010203040000"]]}), state17)
         snap17 = state17.snapshot()
         assert snap17["objects"]["e1"]["team"] == 0 and snap17["my_team"] == 0 and snap17["objects"]["e1"]["name"] == "PetaWatt", snap17["objects"]["e1"]
+        # scoreboard rows and the game-mode map
+        apply_line(json.dumps({"type": "rmi_samples", "items": [[10, 839, "cb094e95df9b24169d593e64310f6d6e"
+            "0028038602aa0dd05e0a09030e06837ed5085f0d068477c12a680f02a5690313069c46c1353a1202a955038602aa0dd05e0a09"]]}), state17)
+        apply_line(json.dumps({"type": "join_samples", "items": [[11, 13, 70, 2343, "0x0", 15, "0180080101ca02dec101a504c10018"],
+            [12, 13, 70, 2343, "0x0", 50, "0181011808ff4a6e928201812ee93e1025428ad20201000089f106dc0100e313d008f59023070100e319b005689fc2710100"]]}), state17)
+        opr17 = state17.snapshot()["opr"]
+        assert opr17["score"] == (1001, 593) and opr17["outposts"]["Sol"] == {"owner": 1, "capturing": 0, "progress": 3}, opr17
+        me17 = [r for r in opr17["board"] if r["name"] == "PetaWatt"]
+        assert me17 and me17[0]["deaths"] == 9 and me17[0]["damage"] == 84944 and me17[0]["team"] == 0, opr17["board"]
 
         # every health change is a feed entry with its delta
         state14 = LiveState()
