@@ -49,31 +49,40 @@ semantics of the ~14 unobserved fields ([decoder-state.md](decoder-state.md)).
 
 ### Vitals: what is decoded, and what the payload looks like
 
-`HealthAmount` is mask bit 0 of an opcode-`0x01` payload, a big-endian float32, and the decoded
-deltas match the numbers the game prints on screen (a `+57` heal and a `362` drain on the player's
-own object, later a right-mouse drain falling in 260.8 steps). Read it with
+The payload is **one mask per member, in the state's member order**, not one opcode per payload:
+the reader `0x17b4110` reads a mask byte, consumes the fields of each set bit, then moves to the
+next member of the state's descriptor vector. So the leading byte of an observed payload is member
+0's mask. **Member 0 (`+0x7c0`, `HealthAmount`), mask bit 0, is a big-endian float32**, and the
+decoded deltas match what the game prints on screen (a `+57` heal, a `362` drain, a right-mouse drain
+falling in 260.8 steps). Read it with
 `Tools/nw_capture/experimental/offline/decode_vitals.py --log <log> [--object <addr>]` (self-check:
 `--check`).
 
 ```text
-01 01 46 1b 88 f3      opcode 01, mask 01: health 9954.2
-01 09 46 17 75 cb 03   opcode 01, mask 09: health + one 1-byte field
-08 02 01 00 08 37 ...  opcode 08, mask 02
-02 01 01 01 02 40 ...  opcode 02
+01 01 46 1b 88 f3      member 0, mask 01: health 9954.2
+01 09 46 17 75 cb 03   member 0, mask 09: health + one 1-byte field
+08 02 01 00 08 37 ...  member 0, mask 08 (one byte), then member 1 mask 01 ...
+02 01 01 01 02 40 ...  member 0 mask 02, then member 1 mask 01, ...
 ```
 
-The other 18 fields are not mapped to opcode+bit yet, and the reader's third stage (a delta list,
-varint plus member vtable `+0x50`) is unexplored. A pass over the player's 191 payloads refused to
-name stamina or mana, and it was right to: the payloads correlated with sprint (`08/02`) and with
-the casts (`02/01`, `04/03`) do not match the static 4-byte codecs as fixed-width single fields.
+The member order is the order of the registration calls in the object builder `FUN_14671E040`:
 
-Why the flat model fails is now clear from the registration list: the first three entries are
-**3-element vectors of `0x28` bytes** at `+0x7c0`, `+0x7e8`, `+0x810` - the member offsets of
-`HealthAmount`, `StaminaAmount` and `ManaAmount` - and their element initialiser `FUN_143bb81a0`
-loads descriptor `0x1480ff160`, the **u32** codec. So each amount is a structure of three 4-byte
-elements (current, maximum, rate, in some order) and the masks index *elements*, not whole fields,
-which also explains the odd masks (`0x80`, `80 30`). Next step is static: extract the element order
-and codec of those three vectors, then bit -> (vector, element) -> name.
+| # | offset | member |
+|---|---|---|
+| 0 | `+0x7c0` | amount structure, `HealthAmount` |
+| 1 | `+0x7e8` | amount structure (`StaminaAmount` in [health-field.md](health-field.md)) |
+| 2 | `+0x810` | amount structure (`ManaAmount` in [health-field.md](health-field.md)) |
+| 3 | `+0x970` | `replicatedAfflictionsHotData` |
+| 4 | `+0xc18` | `replicatedAfflictionsColdData` |
+| 5 | `+0xec0` | `vitalsData` |
+| 6 | `+0x928` | `healthChangeFlags` |
+| 7-12 | `+0x838`..`+0x900` | six unnamed `0x28`-byte structures |
+| 13-18 | `+0xf48`..`+0x1000` | `vitalsId`, `vitalsCategoryId`, `vitalsLevel`, `invulnerability`, `displayImmuneWhenInvulnerable`, `maxHealth` |
+
+Still open: the bits and widths of every member other than member 0's bit 0, how the amount
+structures encode their value (a payload correlated with sprint does **not** decode as a plain
+float32, so at least one of them is quantised), and the reader's third stage (a delta list, varint
+plus member vtable `+0x50`).
 
 ### PlayerComponentReplicatedState: what we have
 
@@ -147,7 +156,7 @@ Tier 2 - player numbers, for a marker readout.
 
 | State | typeIndex | Why |
 |---|---:|---|
-| `VitalsComponentReplicatedState` | 15 | Health done; stamina, mana, the tick rates and `HealthMax` need their opcode+bit, and the delta stage is unexplored |
+| `VitalsComponentReplicatedState` | 15 | Health done (member 0, bit 0); the member order is known, so the work left is the bits and widths of members 1..18 and the delta stage |
 | `AttributeComponentReplicatedState` | 129 | attributes |
 | `StatMultiplierTableComponentReplicatedState` | 1525 | stat multipliers |
 

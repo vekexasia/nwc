@@ -43,8 +43,11 @@ Where the numbers come from: `worldPosAbs` = two big-endian float32 then a quant
 
 ## Health: decoded from the traffic and validated against the game's own numbers
 
-**The health is readable.** The Vitals payload is `[0x01][mask][fields in member order]`, mask
-bit 0 is `HealthAmount` and the field is a **big-endian float32**. Verified by draining the
+**The health is readable.** The Vitals payload is **one mask per member, in the state's member
+order** (`0x17b4110` reads a mask byte, then the fields of each set bit, then moves to the next
+member). Mask bit 0 of **member 0** is `HealthAmount` and the field is a **big-endian float32**.
+What earlier notes called the payload's opcode byte was member 0's mask: `01 01 <f32>` is member 0
+with mask `0x01`, `01 09 <f32> <1B>` is member 0 with mask `0x09` (bits 0 and 3).
 player's own health with the right mouse button: the decoded deltas on that object were **+57.7**
 and **-362.4**, exactly the `+57` heal and `362` damage the game printed on screen, and the same
 capture shows other entities on their own tick patterns (+43.9/+57.7 regeneration, -318.5 for a
@@ -60,9 +63,20 @@ absolute addresses; passing one as an RVA gives an access violation and kills th
 The working hook set is the Vitals reader path itself (`0x17b4110` mask stage, `0x17b43c0` masked
 member, plus the `0x17b3e90`/`0x17b4320` stages) with the `worldPosAbs` reader as a control.
 
-Still open: which mask bit is `HealthMax`, the exact member order of the state's vector, and how to
-attribute an object to the local player without the combat text (the player's object here is the one
-whose deltas matched the on-screen numbers). Captures need no focus at all; injecting input does.
+The member order is recovered too: it is the order of the registration calls in the object builder
+`FUN_14671E040`, which is the order the state's descriptor vector is filled in. Member 0 is `+0x7c0`
+(the `HealthAmount` structure, whose bit 0 is the float32 verified above), 1 `+0x7e8`, 2 `+0x810`, then
+`replicatedAfflictionsHotData` `+0x970`, `replicatedAfflictionsColdData` `+0xc18`, `vitalsData`
+`+0xec0`, `healthChangeFlags` `+0x928`, six unnamed structures at `+0x838`..`+0x900`, and
+`vitalsId`, `vitalsCategoryId`, `vitalsLevel`, `invulnerability`, `displayImmuneWhenInvulnerable`,
+`maxHealth`. The nine unnamed members are contiguous `0x28`-byte structures at `+0x7c0`..`+0x928`,
+which is what makes them look like three amounts with three attributes each.
+
+Still open: the bits and widths of every member other than 0, and how the amount members other than
+`HealthAmount` encode their value (the sprint-correlated payload does **not** decode as a plain
+float32, so at least one of them is quantised). Attribution of an object to the local player without
+the combat text is also still open (the player's object is the one whose deltas matched the numbers
+on screen). Captures need no focus at all; injecting input does.
 
 Health is **not** an `ALCReplicatedState` property (all 63 checked). The actual network type is
 `MB::VitalsComponentReplicatedState`, a custom group-aware handler rather than the ALC schema
