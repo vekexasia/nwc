@@ -7,6 +7,9 @@ DTLS ledger capture. Reusable wrapper around the documented attach route.
 
 Writes: Tools/nw_capture/captures/<session>/dtls/ledger.bin and Tools/nw_capture/logs/<ts>_<label>.log
 The game is never spawned, restarted or killed; the probe must be read-only.
+
+One capture at a time: this takes the lock in `capture_lock.py` and waits for a running
+capture instead of overlapping it, and it clears leftover frida-server processes first.
 """
 from __future__ import annotations
 
@@ -24,6 +27,8 @@ import frida
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO / "Tools/nw_capture"))
 from _runner import FridaRunner  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import capture_lock  # noqa: E402
 
 STEAM = Path.home() / ".local/share/Steam/steamapps"
 RUNTIME = str(STEAM / "common/SteamLinuxRuntime_4/run")
@@ -32,13 +37,41 @@ PFX = str(STEAM / "compatdata/1063730/pfx")
 PORT = 27943
 
 
+def leftover_servers():
+    """PIDs of frida-server processes left behind by a killed capture."""
+    mine = {os.getpid(), os.getppid()}
+    out = subprocess.run(["ps", "-eo", "pid,args"], capture_output=True, text=True).stdout
+    found = []
+    for line in out.splitlines()[1:]:
+        pid, _, args = line.strip().partition(" ")
+        if "frida-server" not in args or "grep" in args:
+            continue
+        if pid.isdigit() and int(pid) not in mine:
+            found.append(int(pid))
+    return found
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--probe", required=True, type=Path)
     parser.add_argument("--seconds", type=float, default=40.0)
     parser.add_argument("--label", default="probe")
+    parser.add_argument("--wait", type=float, default=None,
+                        help="seconds to wait for a running capture (default: NW_CAPTURE_WAIT or 900)")
     args = parser.parse_args(argv)
     args.probe = args.probe.resolve()   # _runner resolves relative probes against Tools/nw_capture
+
+    for pid in leftover_servers():
+        print(f"clearing leftover frida-server pid {pid}", flush=True)
+        with contextlib.suppress(ProcessLookupError, PermissionError):
+            os.kill(pid, 9)
+        time.sleep(0.3)
+
+    try:
+        lock = capture_lock.acquire(args.label, wait=args.wait)
+    except capture_lock.CaptureBusy as busy:
+        print(f"BLOCKED: {busy}", file=sys.stderr)
+        return 1
 
     env = dict(os.environ, WINEPREFIX=PFX, WINEDEBUG="-all")
     server = subprocess.Popen([RUNTIME, "--", WINE, str(REPO / "Tools/nw_capture/frida-server.exe"),
@@ -70,6 +103,11 @@ def main(argv=None):
         sys.stdout.flush()
         code = runner.run()
         print(f"log={runner.log_path}")
+        with contextlib.suppress(Exception):
+            text = Path(runner.log_path).read_text(errors="ignore")
+            if "unsupported DTLS hook site" in text:
+                print("NOTE: this process has a stale instrument from an earlier capture; "
+                      "restart the game before capturing again.", file=sys.stderr)
         print(f"runner_exit={code}")
         print(f"game_alive={any(p.pid == attached for p in device.enumerate_processes())}")
         return 0
@@ -82,6 +120,7 @@ def main(argv=None):
                     device.kill(servers[0])
         with contextlib.suppress(Exception):
             server.wait(timeout=10)
+        capture_lock.release(lock)
 
 
 if __name__ == "__main__":
