@@ -192,8 +192,8 @@ class LiveState:
             history.append((now, position["x"], position["y"]))
             while history and now - history[0][0] > 8.0:
                 history.pop(0)
-            previous = self._slot(key).get("position")
-            self._slot(key).update({"position": position, "position_at": time.time()})
+            previous = self._slot(key).get("position") if not self._slot(key).get("static") else None
+            self._slot(key).update({"position": position, "position_at": time.time(), "static": False})
             self.counters["position"] += 1
             window = self.calibration
             if window is not None and previous is not None:
@@ -329,6 +329,24 @@ class LiveState:
                     current.remove(value)
                 current.append(value)
             del current[:-keep]
+
+    def info(self, key: str, **fields) -> None:
+        """Level (ProgressionComponent 899 member 0 bit 0, u32: 12 -> 1066 hp, 69 -> 18k hp on named
+        players), faction id (FactionComponent 3152 member 2 bit 0, u8: javelindata_factiondata says
+        1 Syndicate, 2 Marauders, 3 Covenant), mana from ManaComponent 1652 (the stamina shape), and the
+        gatherable flag (GatherableController 12 present)."""
+        with self.lock:
+            self._slot(key).update({k: v for k, v in fields.items() if v is not None})
+
+    def position_static(self, key: str, x: float, y: float) -> None:
+        """PositionInTheWorld (13): the spawn position, sent once. Kept only for entities without an ALC
+        track (camps, gatherables, placed objects); a moving entity's ALC position replaces it."""
+        if not (math.isfinite(x) and math.isfinite(y) and 0 < x < 20000 and 0 < y < 20000):
+            return
+        with self.lock:
+            slot = self._slot(key)
+            if "position" not in slot:
+                slot.update({"position": {"x": round(x, 2), "y": round(y, 2)}, "position_at": time.time(), "static": True})
 
     def mount(self, key: str, decoded: dict) -> None:
         """MountComponentReplicatedState: mounted flag (owner and remote shapes) and mount stamina."""
@@ -508,6 +526,19 @@ def apply_line(line: str, state: LiveState) -> None:
                 state.kind(f"e{item[1]}", struct.unpack(">f", bytes.fromhex(item[6][12:20]))[0] > 0)
                 if NAMES:
                     state.tags(f"e{item[1]}", "vitals_ids", book_hits(item[6], ("vitals", "gatherables")), keep=2)
+            elif item[3] == 899 and item[6][:4] in ("0101", "0301") and item[5] >= 6:
+                state.info(f"e{item[1]}", level=int(item[6][4:12], 16))
+            elif item[3] == 3152 and item[6][:2] == "04" and item[5] >= 3 and int(item[6][2:4], 16) & 1:
+                state.info(f"e{item[1]}", faction=int(item[6][4:6], 16))
+            elif item[3] == 1652:
+                decoded = parse_stamina(bytes.fromhex(item[6]))
+                if "stamina" in decoded:
+                    state.info(f"e{item[1]}", mana=round(decoded["stamina"], 1), mana_max=decoded.get("stamina_max"))
+            elif item[3] == 13 and item[5] >= 10 and item[6][:2] == "01" and int(item[6][2:4], 16) & 3 == 3:
+                x, y = struct.unpack(">ff", bytes.fromhex(item[6][4:20]))
+                state.position_static(f"e{item[1]}", x, y)
+            elif item[3] == 12:
+                state.info(f"e{item[1]}", gatherable=True)
             elif item[3] == 3183 and NAMES:
                 weapons = [i for i in book_hits(item[6], ("itemdefinitions_",)) if i[:2].lower() in ("1h", "2h")]
                 if weapons:
@@ -810,6 +841,22 @@ def self_check() -> int:
 
         # the reference position of alc-protocol-reference.md 2.4 decodes to elevation 72.1
         assert decode_abs("460ab4d245436963280c")["elevation"] == 72.1, decode_abs("460ab4d245436963280c")
+
+        # level, faction and mana ride on their own states
+        state15 = LiveState()
+        state15.me_path = Path(tmp) / "me15.json"; state15.max_path = Path(tmp) / "max15.json"; state15.maxima = {}
+        apply_line(json.dumps({"type": "join_samples", "items": [
+            [1, 36, 70, 899, "0x0", 6, "010100000040"], [2, 36, 49, 3152, "0x0", 6, "040f03000100"],
+            [3, 36, 62, 1652, "0x0", 18, "010f42c8000042c80000000000003f800000"], [4, 36, 49, 3152, "0x0", 3, "040201"]]}), state15)
+        e36 = state15.objects["e36"]
+        assert e36["level"] == 64 and e36["faction"] == 3 and e36["mana"] == 100.0 and e36["mana_max"] == 100.0, e36
+
+        # a static position stays until an ALC one arrives, and never overrides one
+        apply_line(json.dumps({"type": "join_samples", "items": [[1, 41, 1, 13, "0x0", 15, "0103460ab2be4582dc881d0603ff09"], [2, 41, 0, 12, "0x0", 3, "010108"]]}), state15)
+        e41 = state15.objects["e41"]
+        assert e41["static"] is True and e41["gatherable"] is True and abs(e41["position"]["x"] - 8876.7) < 0.1, e41
+        state15.position("e41", {"x": 8880.0, "y": 4180.0, "elev_raw": 0, "elevation": 0.0})
+        assert state15.objects["e41"]["static"] is False and state15.objects["e41"]["position"]["x"] == 8880.0
 
         # every health change is a feed entry with its delta
         state14 = LiveState()

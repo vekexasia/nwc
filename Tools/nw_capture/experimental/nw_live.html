@@ -240,6 +240,11 @@ function draw() {
     const [lx, ly] = toScreen(...toPx(trail[trail.length - 1]));
     if (lx < -40 || ly < -40 || lx > w + 40 || ly > h + 40) continue;
     ctx.fillStyle = k === "animal" ? "#f3ecdc" : colour[k]; ctx.strokeStyle = k === "animal" ? colour.animal : "#f3ecdc"; ctx.lineWidth = 1.5 * r;
+    if ((objects[key] || {}).static) {                           // a placed thing: camp, node, object; a small square
+      ctx.fillStyle = objects[key].gatherable ? "rgba(77,124,74,0.8)" : "rgba(138,123,102,0.6)";
+      ctx.fillRect(lx - 3 * r, ly - 3 * r, 6 * r, 6 * r);
+      continue;
+    }
     ctx.beginPath(); ctx.arc(lx, ly, (k === "me" ? 5 : 3.5) * r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     const heading = (objects[key] || {}).heading;
     if (heading != null && view.scale >= 0.15) {                   // facing wedge: east = 0, north = 90, screen y is down
@@ -256,7 +261,7 @@ function draw() {
       ctx.strokeStyle = "#2a2622"; ctx.lineWidth = 1 * r;
       ctx.beginPath(); ctx.arc(lx, ly, 9 * r, 0, Math.PI * 2); ctx.stroke();
     }
-    const slot = objects[key] || {}, kindName = (slot.vitals_ids || [])[0];
+    const slot = objects[key] || {}, kindName = (slot.vitals_ids || [])[0] || (slot.static && slot.gatherable ? "node" : null);
     const name = k === "me" ? (slot.name || "you") : (k === "animal" && slot.name ? `${slot.name}'s companion` : (slot.name || (kindName && view.scale >= 0.5 ? kindName : null)));
     const pose = poseText(slot);
     if (name && (k === "me" || view.scale >= 0.3)) labels.push([lx, ly, pose ? `${name} · ${pose}` : name, k]);
