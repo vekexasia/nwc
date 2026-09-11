@@ -84,10 +84,10 @@ Member 1, field bit 0, is a float32 in `[0, 100]` (64.10 right before the drain,
 within two seconds): mana is the obvious reading, but not proven.
 
 Still open: the bits and widths of the other members, stamina in particular (a capture with the
-sprint phase showed **no** resource falling while sprinting, and an injected `w`+`shift` pair moved
-no object that can be tied to the player, so the sprint itself is in doubt - the mouse drain works,
-the injected keyboard may not arrive), how the non-health amounts encode their value, and the
-reader's third stage (a delta list, varint plus member vtable `+0x50`).
+sprint phase showed no resource falling while sprinting and no member-1 update from the spells, and
+the character was standing in a settlement, where spells cannot be cast - injected keyboard input
+itself is verified working, see [NEXT_SESSION.md](../NEXT_SESSION.md)), how the non-health amounts
+encode their value, and the reader's third stage (a delta list, varint plus member vtable `+0x50`).
 
 ### PlayerComponentReplicatedState: what we have
 

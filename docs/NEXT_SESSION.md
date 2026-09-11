@@ -246,5 +246,13 @@ Current next technical step: the field mask bits of members 1..18, member by mem
 with a corrected action sequence (spells on Q, R and F) gave member 1 as a float32 in `[0, 100]`
 (`64.10` before the drain, `100.0` two seconds later), which is what mana would look like for three
 casts from full, but the spells produced no update of their own, and nothing fell while sprinting.
-The mouse drain works, so the open question is whether the injected **keyboard** reaches the game at
-all: settle that first, because stamina and mana both need it.
+That is **not** an input problem: injected keyboard input does reach the game. Injecting `m` through
+the same uinput device that the action sequence uses opens the map, which is visible in a `grim`
+screenshot of the game window before and after. The likely cause is the game state: the character was
+standing in a settlement, where spells cannot be cast, so nothing consumed mana. Redo the capture in
+the open world.
+
+Also to re-check: the earlier captures interpreted the health drops as the player's own right-mouse
+drain. If the character was in a settlement then too, the ability cannot have fired, and the drops
+were ordinary damage from something else. The numbers matched what the game printed on screen, and
+that is what validates the decode; the mechanism that caused them is an interpretation, not evidence.

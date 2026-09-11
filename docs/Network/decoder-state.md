@@ -54,8 +54,8 @@ member 0 (`+0x7c0`, `HealthAmount`) always leads: `01 01 <f32>` is member 0 pres
 (the float32), and `01 09 <f32> <1B>` is member 0 with field bits 0 and 3. What earlier notes called
 the payload's opcode byte was member 0's member mask.
 
-Verified by draining the player's own health with the right mouse button: the decoded deltas on that
-object were **+57.7** and **-362.4**, exactly the `+57` heal and `362` damage the game printed on
+Verified against the numbers the game printed: the decoded deltas on the object that was taking
+damage were **+57.7** and **-362.4**, exactly the `+57` heal and `362` damage the game printed on
 screen, and the same capture shows other entities on their own tick patterns (+43.9/+57.7
 regeneration, -318.5 for a second entity hit by the same ability). Reproduced on a second capture:
 five `-362.4` drops inside the `drain_start`/`drain_end` window of `nw_actions.py`, with +57.7 and
@@ -79,6 +79,10 @@ The member order is recovered too: it is the order of the registration calls in 
 `vitalsId`, `vitalsCategoryId`, `vitalsLevel`, `invulnerability`, `displayImmuneWhenInvulnerable`,
 `maxHealth`. The nine unnamed members are contiguous `0x28`-byte structures at `+0x7c0`..`+0x928`,
 which is what makes them look like three amounts with three attributes each.
+
+Caution on the mechanism: the earlier note that the right mouse button drained the player's own
+health is an interpretation, not evidence. What is verified is that the decoded deltas matched the
+numbers on screen; which effect caused them is not established.
 
 Member 1, field bit 0, is a **float32 in `[0, 100]`** (not the health scale): on the capture above it
 reads `64.10` in the 40 ms before the drain starts and refills to `100.0` within two seconds. Three
