@@ -203,6 +203,8 @@ class LiveState:
         Scoped on purpose: this only ever decides *identity*, never the coordinates, and every decision
         is reported with its margin so a wrong pick is visible in the page instead of silent.
         """
+        if self.me.get("method") == "walk":
+            return          # you told it who you are: with entity keys that stays true, never override it
         if now - self.last_auto < self.AUTO_EVERY:
             return
         self.last_auto = now
