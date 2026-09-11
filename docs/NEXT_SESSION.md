@@ -391,3 +391,38 @@ Also on this machine, after the failed attempts: tbe attach chain gets stuck (`f
 timeout`, and before that `frida-agent.dll: File exists` inside the Proton prefix, which was a leftover
 temp directory that was cleaned). Three consecutive captures failed to attach after that, which points
 at a stale instrument inside the running game process: restarting the game is the usual fix.
+
+## Update 2026-09-11: why the attach to the game times out, and the rule that was missing
+
+Symptom: every capture failed with `frida.TransportError: timeout was reached` on attaching to
+`NewWorld.exe`, while the same frida-server still worked.
+
+What the diagnosis showed:
+
+- The device was fine: `device.enumerate_processes()` listed 14 processes, and attaching to
+  `services.exe` in that same device succeeded in **0.0 s**.
+- Attaching to `NewWorld.exe` timed out at 25 s, with `realm="native"` and with `realm="emulated"`.
+- `/proc/<host pid>/maps` of the game process contains
+
+  ```
+  .../AppData/Local/Temp/re.frida.server/x86_64/frida-agent.dll (deleted)
+  ```
+
+  i.e. an agent from an earlier session is **still mapped inside the game process** and the file it was
+  mapped from no longer exists.
+
+Cause, and it was self-inflicted: an earlier attempt failed with `frida-agent.dll: File exists`
+(the leftover agent file blocked the server). Instead of stopping there, the temp directory
+`re.frida.server` inside the Proton prefix was deleted, which **unlinked the file of a mapped DLL**.
+From then on Frida cannot inject a new agent into that process: the orphan holds the channel and the
+25 s handshake never completes.
+
+**Rules that follow, and were missing:**
+
+- Never delete `.../AppData/Local/Temp/re.frida.server` while a session may still be live: the agent
+  stays inside the game process until the game restarts, and unlinking its file makes the process
+  permanently unattachable.
+- Never kill a frida-server while a capture session is live: that is what orphans the agent. One
+  capture at a time, and stop it through the tool.
+- If a capture fails with `frida-agent.dll: File exists`, the fix is **restarting the game**, not
+  cleaning the prefix. The in-process agent cannot be unloaded from outside.
