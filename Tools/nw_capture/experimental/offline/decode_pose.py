@@ -23,7 +23,9 @@ LAYER_NAMES = {
         0x0a: "attack", 0x08: "ability", 0x09: "gathering",
         # the player's own mount at 20:45:42 (live 201741): OnSummonMountPending, 0x14 -> 0x17 -> 0x0f,
         # ShowDismountNotification, weapon layer 0 throughout
-        0x14: "mounting", 0x17: "mounted", 0x0f: "dismounting"},
+        0x14: "mounting", 0x17: "mounted", 0x0f: "dismounting",
+        # census live 201741 with riding = Mount state 1/5: 19 of 21 entries were riders moving at 7.9 u/s
+        0x15: "riding"},
     1: {0x2c: "drawing weapon", 0x2d: "weapon out", 0x21: "light attack", 0x27: "heavy attack",
         0x24: "ability", 0x25: "block", 0x29: "fishing"},
     2: {0x2e: "attacking"},                 # set only while an attack runs (poseB)
