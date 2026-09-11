@@ -80,10 +80,13 @@ The member order is the order of the registration calls in the object builder `F
 | 7-12 | `+0x838`..`+0x900` | six unnamed `0x28`-byte structures |
 | 13-18 | `+0xf48`..`+0x1000` | `vitalsId`, `vitalsCategoryId`, `vitalsLevel`, `invulnerability`, `displayImmuneWhenInvulnerable`, `maxHealth` |
 
-**Member 1 (`+0x7e8`), field bit 0, is mana**: a float32 in `[0, 100]` reading `64.10` right after the
-three spells and refilling to `100.0` within two seconds, confirmed by the player watching the mana
-bar fall during the same sequence. (The static table names this member `StaminaAmount`; the behaviour
-says mana.)
+**Member 1 (`+0x7e8`), field bit 0, is mana**: a float32 in `[0, 100]`. On capture
+`proton_20260911_092010-mana` the object `0x5724afd0` sends nothing before the first spell (so it was
+full), then `77.5` after Q and `55.5` after R, while a blue bar on screen goes from 130 to 97 pixels,
+ratio `0.75` against the decoded `0.72`; the three spells are separately confirmed by their cooldowns
+(`19` -> `17`/`15` -> `14`/`12`/`8`). Details and caveats in
+[decoder-state.md](decoder-state.md). (The static table names this member `StaminaAmount`; the wire
+behaviour says mana.)
 
 Stamina is **not** in this state. It lives in ALC as `group0.bit37`, a half float carrying the missing
 segments as a negative deficit that returns to exactly `0`, identified by a capture whose only action

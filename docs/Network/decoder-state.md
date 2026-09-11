@@ -84,12 +84,28 @@ Caution on the mechanism: the earlier note that the right mouse button drained t
 health is an interpretation, not evidence. What is verified is that the decoded deltas matched the
 numbers on screen; which effect caused them is not established.
 
-Member 1 (`+0x7e8`), field bit 0, is the **mana**: a float32 in `[0, 100]` that reads `64.10` right
-after the three spells and refills to `100.0` within two seconds. The player watched the mana bar fall
-when the spells were cast, and three casts from full at a cost of about 12 each land exactly on
-`64.10`. Note that the static table in [health-field.md](health-field.md) names this member
-`StaminaAmount`; the observed behaviour says mana, which is a naming conflict still to resolve against
-the descriptor, not a decoding question.
+Member 1 (`+0x7e8`), field bit 0, is the **mana**: a float32 in `[0, 100]`. Verified on the capture
+`proton_20260911_092010-mana` (idle, then Q, R, F, then idle) through two channels that do not share
+code:
+
+- The three spells fired, shown by the ability cooldowns on screen: `19` after Q, `17` and `15` after
+  R, `14`, `12` and `8` after F.
+- The Vitals object `0x5724afd0` sends **no** mana update at all before the first spell, and the client
+  only sends a field when it changes, so it was full; then `77.5` after Q and `55.5` after R, refilling
+  in between and afterwards.
+- A blue bar between the cast bar and the health bar (y 691-704 in a 1920x1080 frame) measures 130
+  pixels after Q and 97 after R, a ratio of `0.75` against the decoded `0.72`, and grows back to 119
+  pixels during the refill.
+
+Caveats: in the "before" screenshot that bar is not drawn, so the full end is inferred from the absence
+of updates rather than measured, and the pixel check is therefore a single ratio rather than a series.
+An earlier note justified this as "three casts of about 12 from full gives `64.10`", using an object
+that had been identified from a health drain; that object is not established as the player, so the
+arithmetic is dropped.
+
+Note that the static table in [health-field.md](health-field.md) names this member `StaminaAmount`; the
+observed behaviour says mana, which is a naming conflict to resolve against the descriptor, not a
+decoding question.
 
 Still open: the bits and widths of every member other than 0, and how the amount members other than
 `HealthAmount` encode their value (the sprint-correlated payload does **not** decode as a plain

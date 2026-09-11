@@ -242,16 +242,24 @@ Reading order for this part: `docs/Network/decoder-state.md` (the health section
 `health-field.md` (the 19-member static table), `replicated-state-todo.md` (the per-state TODO and the
 working loop).
 
-Current next technical step: the field mask bits of members 1..18, member by member. A first attempt
-with a corrected action sequence (spells on Q, R and F) gave member 1 as a float32 in `[0, 100]`
-(`64.10` before the drain, `100.0` two seconds later), which is what mana would look like for three
-casts from full, but the spells produced no update of their own, and nothing fell while sprinting.
+Current next technical step: the field mask bits of members 1..18, member by member. What is already
+settled on the way there is member 1; the earlier attempt with a corrected action sequence (spells on
+Q, R and F) gave a float32 in `[0, 100]`, but the object it came from was the one identified by a
+health drain, which is not established. The dedicated mana capture below replaces that evidence.
+Two questions were open at that point and are now closed: whether the injected keyboard reaches the
+game at all, and where stamina lives.
 That is **not** an input problem: injected keyboard input does reach the game. Injecting `m` through
 the same uinput device that the action sequence uses opens the map, which is visible in a `grim`
-screenshot of the game window before and after. Spells also work inside a settlement: the player
-watched the **mana** bar fall when Q, R and F were pressed, and member 1 of the Vitals payload reads
-`64.10` right after - three casts from full at about 12 each. So **member 1 (`+0x7e8`), field bit 0, is
-mana**, confirmed, in a float32 `[0, 100]` that refills to 100 within two seconds.
+screenshot of the game window before and after. Spells also work inside a settlement, and **member 1
+(`+0x7e8`), field bit 0, is the mana**: a
+float32 `[0, 100]`. Verified on `proton_20260911_092010-mana` (idle, Q, R, F, idle) by two independent
+channels - the ability cooldowns on screen (`19` -> `17`/`15` -> `14`/`12`/`8`) prove the casts fired,
+and the object `0x5724afd0` sends no mana update before the first one (full, because the client sends
+a field only on change), then `77.5` after Q and `55.5` after R - while a blue bar on screen goes from
+130 to 97 pixels, ratio `0.75` against the decoded `0.72`. Caveat: in the "before" screenshot that bar
+is not drawn, so the full end is inferred from the missing updates, and the pixel check is one ratio,
+not a series. An earlier `64.10` figure came from an object identified by a health drain and is
+dropped.
 
 **Shift is the dodge**, not sprint, so the earlier "sprint" phases were a run with one dodge in them.
 That is where stamina went, and stamina is not a Vitals field at all: it is ALC `group0.bit37`, a half
