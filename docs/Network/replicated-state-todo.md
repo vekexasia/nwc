@@ -132,7 +132,11 @@ bundle header, **not** inside PlayerComponent; sending it alone fails to parse t
 3. **Decode**: `decode_vitals.py` / `decode_alc_state.py` turn a log into values.
 4. **Validate by behaviour, not by plausibility**: drive one action and check the value against the
    game's own output (the on-screen damage numbers for health, the jump arc for `distGround`, the
-   dodge for `segmentedStamina`). A float that merely looks plausible is not evidence.
+   dodge for `segmentedStamina`). A float that merely looks plausible is not evidence. Note that
+   `segmentedStamina`'s **wire bit is not confirmed**: the schema index in
+   [alc-protocol-reference.md](alc-protocol-reference.md) is not the wire order, and no capture yet
+   ties a group-0 bit to a known stamina event (a dedicated capture with a single dodge would: then
+   the only bit that moves is the one to look at).
 
 `nw_actions.py` plays a timed sequence (sprint, stand, casts, right-mouse self-drain) and writes a
 timeline, so a capture can be read per phase; that is how the player's own Vitals object is

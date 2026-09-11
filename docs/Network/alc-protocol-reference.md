@@ -361,6 +361,14 @@ record payload.
 | 61 | `scopeTimeBlob1Data3` | `+0x11a8` | `0x14279e210` | 1 B |
 | 62 | `quantization` | `+0x938` | `0x142a42f30` | 4 B (u32) |
 
+These bit numbers are the **schema index** order, not the wire order. The client's runtime entry
+vector, observed live, gives different readers for the high bits (it reads bit 46 with the prefix
+varint reader, not a single byte), and `decode_alc_state.py` deliberately keeps that observed map
+instead of substituting this one. Consequence: a name above bit ~34 in this table is not yet a wire
+bit. For `segmentedStamina` in particular there is no confirmed wire bit; the group-0 bits seen
+changing across our captures are `bit41` (a packed state byte, `e3` <-> `f3`) and `bit37` (a half
+float taking `-4`, `-2`, `0`), neither of which is tied to a known action yet.
+
 Vector families, in case a single row is not enough: `slayerStateId`, `slayerSequenceId` and
 `slayerStateIdStarted` are vectors of 4 elements (`+0xac0`, `+0xbe0`, `+0xb60`), and
 `slayerSeqTimeRel`/`slayerSeqTimeAbs` is a vector of 4 elements of `0x58` bytes at `+0xc80`; the bits
