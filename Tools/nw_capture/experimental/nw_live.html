@@ -44,6 +44,12 @@
   .bar.mana .fill { background: var(--player); }
   .bar.stamina .fill { background: var(--ok); }
   .bar .note { color: var(--ink-soft); font-style: italic; }
+  .cd { display: grid; grid-template-columns: 52px 1fr 48px; gap: 6px; align-items: center; font-size: 12px; margin: 3px 0; }
+  .cd .track { height: 6px; border: 1px solid var(--ink); background: var(--paper-2); }
+  .cd .fill { height: 100%; background: var(--warn); }
+  .cd.ready .fill { background: var(--ok); }
+  .cd b { font-family: var(--mono); font-weight: normal; text-align: right; }
+  .cd .id { font-family: var(--mono); color: var(--ink-soft); font-size: 11px; }
   button {
     font: 12px var(--serif); color: var(--ink); background: var(--paper); border: 1px solid var(--ink);
     padding: 4px 9px; cursor: pointer; box-shadow: 1px 1px 0 var(--ink);
@@ -76,7 +82,6 @@
     aside.closed { max-height: none; }
     #drawerToggle { display: inline-block; float: right; }
     #hud { min-width: 0; right: 12px; max-width: none; }
-    #hud .bar.extra { display: none; }
     #tools { top: 50px; left: 12px; right: 12px; flex-wrap: wrap; max-width: none; }
     #status { max-width: calc(100% - 24px); }
     .card { padding: 8px 10px; }
@@ -99,7 +104,7 @@
     <div class="bar health"><div class="label"><span>health</span><b id="hpText">-</b></div><div class="track"><div class="fill" id="hpFill" style="width:0"></div></div></div>
     <div class="bar mana"><div class="label"><span>mana</span><b id="mpText">-</b></div><div class="track"><div class="fill" id="mpFill" style="width:0"></div></div></div>
     <div class="bar stamina"><div class="label"><span>stamina <span class="note" id="stNote"></span></span><b id="stText">-</b></div><div class="track"><div class="fill" id="stFill" style="width:0"></div></div></div>
-    <div class="bar extra"><div class="label"><span>cooldowns, potions</span><span class="note">not on the wire we decode</span></div></div>
+    <div id="cooldowns"></div>
     <div class="dim" style="font-size:12px" id="hudPos"></div>
     <button id="asMe" style="display:none; margin-top:6px" title="tell the server this entity is you">this is me</button>
   </div>
@@ -350,6 +355,13 @@ function render(snapshot) {
     (selected ? `${selected}, you${meInfo.method ? ", " + meInfo.method : ""}${meInfo.stale ? ", stale" : ""}` : "");
   bar("hp", shown.health, "health", shown.health_max); bar("mp", shown.mana, "mana", shown.mana_max);
   bar("st", shown.stamina, "stamina", shown.stamina_max || 100);
+  const cds = shown.cooldowns || {};
+  $("cooldowns").innerHTML = Object.keys(cds).sort().map(slot => {
+    const cd = cds[slot], total = Math.max(cd.expiry - cd.start, 0.001), left = Math.max(0, cd.expiry - now);
+    return `<div class="cd ${left > 0 ? "" : "ready"}"><span>slot ${slot} <span class="id">${cd.id.slice(0, 6)}</span></span>` +
+      `<div class="track"><div class="fill" style="width:${left > 0 ? 100 * left / total : 100}%"></div></div>` +
+      `<b>${left > 0 ? left.toFixed(1) + "s" : "ready"}</b></div>`;
+  }).join("") || '<div class="note" style="font-size:11px">cooldowns: none seen yet (they arrive when an ability is used)</div>';
   $("stNote").textContent = shown.winded_s > 0 ? "winded" : (shown.regen_delay_s > 0 ? "regen delay" : "");
   $("hudPos").textContent = shown.position ? `x ${shown.position.x}  y ${shown.position.y}  elev(raw) ${shown.position.elev_raw}` : "";
 

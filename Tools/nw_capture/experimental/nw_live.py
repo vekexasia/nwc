@@ -31,6 +31,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE / "offline"))
+from decode_cooldowns import parse_cooldowns  # noqa: E402
 from decode_stamina import parse_stamina  # noqa: E402
 from decode_vitals import parse_members  # noqa: E402  the shared, verified payload model
 
@@ -234,6 +235,16 @@ class LiveState:
             except Exception:
                 pass
 
+    def cooldowns(self, key: str, entries: list) -> None:
+        """CooldownTimersComponentReplicatedState deltas: one (id, start, expiry) per slot."""
+        with self.lock:
+            slot = self._slot(key)
+            table = slot.setdefault("cooldowns", {})
+            for entry in entries:
+                table[str(entry["slot"])] = {"id": entry["id"], "start": round(entry["start"], 3),
+                                             "expiry": round(entry["expiry"], 3)}
+            self.counters["cooldown"] = self.counters.get("cooldown", 0) + len(entries)
+
     def stamina(self, key: str, decoded: dict) -> None:
         """StaminaComponentReplicatedState: the bar itself, about 60 Hz while it moves."""
         with self.lock:
@@ -366,13 +377,18 @@ def apply_line(line: str, state: LiveState) -> None:
                 state.skip()
             else:
                 state.position(key, position)
-    elif kind == "join_samples":      # only the stamina state; position, vitals and names have their own shapes
+    elif kind == "join_samples":      # stamina and cooldowns; position, vitals and names have their own shapes
         for item in items:
-            if len(item) < 7 or item[3] != 4297 or len(item[6]) != 2 * item[5]:
+            if len(item) < 7 or len(item[6]) != 2 * item[5]:
                 continue
-            decoded = parse_stamina(bytes.fromhex(item[6]))
-            if decoded:
-                state.stamina(f"e{item[1]}", decoded)
+            if item[3] == 4297:
+                decoded = parse_stamina(bytes.fromhex(item[6]))
+                if decoded:
+                    state.stamina(f"e{item[1]}", decoded)
+            elif item[3] == 2932:
+                entries = parse_cooldowns(bytes.fromhex(item[6]))
+                if entries:
+                    state.cooldowns(f"e{item[1]}", entries)
     elif kind == "vitals_samples":
         for item in items:
             if len(item) < 3:
@@ -623,6 +639,10 @@ def self_check() -> int:
             [1, 5, 16, 15, "0x0", 3, "010100"],
             [2, 5, 62, 4297, "0x0", 10, "0109425c00003f800000"]]}), state10)
         assert state10.objects["e5"]["stamina"] == 55.0 and state10.objects["e5"]["regen_delay_s"] == 1.0, state10.objects
+        apply_line(json.dumps({"type": "join_samples", "items": [
+            [3, 5, 41, 2932, "0x0", 27, "010101011b0fa51101a0260002fe31ed13a78b0002fe31eba6f914"]]}), state10)
+        cd = state10.objects["e5"]["cooldowns"]["0"]
+        assert cd["id"] == "1b0fa511" and abs(cd["expiry"] - cd["start"] - 23.9) < 0.01, cd
 
         # entity keys use the verified join identity unless the user has chosen one
         state7 = LiveState()
