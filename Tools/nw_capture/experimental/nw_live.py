@@ -109,6 +109,8 @@ class LiveState:
         calibrated = me.get("object")
         if not calibrated or key == calibrated:
             return
+        if self._is_entity_key(calibrated):
+            return                        # entity keys are stable: a quiet player is standing still, not gone
         last = self.objects.get(calibrated) or {}
         reference = last.get("position")
         if reference is None or (time.time() - (last.get("position_at") or 0)) < 15:
@@ -598,6 +600,14 @@ def self_check() -> int:
         finally:
             stop8.set()
             thread8.join(1)
+
+        # with an entity key nothing is handed over: standing still is not disappearing
+        state9 = LiveState()
+        state9.me_path = Path(tmp) / "me9.json"
+        state9.me = {"object": "e1", "method": "join-default"}
+        state9.objects["e1"] = {"object": "e1", "position": {"x": 1.0, "y": 1.0}, "position_at": time.time() - 60}
+        state9.position("e77", {"x": 2.0, "y": 2.0, "elev_raw": 0})
+        assert state9.me["object"] == "e1" and "followed_from" not in state9.me, state9.me
 
         # continuity: when the calibrated object goes quiet and another shows up where it was, take over
         state4 = LiveState()
