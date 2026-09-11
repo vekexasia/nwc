@@ -23,12 +23,25 @@ The client resolves `slayerStateId` through the slayer script assets to a clip a
 
 ## State ids seen for the player (V1 = 1)
 
-| `slayerStateId` | when it appeared | evidence |
-|---:|---|---|
-| `0x1a` (26) | walk start (`w` held), `slayerSeqTimeAbs` reset to 0.05 | `logs/20260911-112506_joinwalk.log` 11:25:22.4, `captures/proton_20260910_183044-alcdodge` 18:31:09 |
-| `0x1b` (27) | sprint end / coming to a stop, held for ~1.3 s | `captures/proton_20260911_082212-actions2` 08:22:34.5 (timeline `sprint_end`), alcdodge 18:31:27 |
-| `0x1f` (31) | idle, entered 1.3-2 s after stopping, `slayerSequenceId` `0xbb0f` each time | actions2 08:22:35.9, joinwalk 11:25:28.6, alcdodge 18:31:29 |
-| `0x2d` (45) | each spell cast (`cast1`, `cast2`), `slayerSequenceId` 0, and the two hits of `alchit` | actions2 08:22:39.2 and 08:22:42.2, `captures/proton_20260910_231300-alchit` |
+Layers matter: the four `slayer*` triplets (reader bits 13..24) are four layers, and the timeline
+prints them as `[L0]`..`[L3]`. Layer 0 is locomotion, layer 1 is the weapon. Times are key-press
+time -> first frame with the new state (the hook stamps arrive 0.1-0.15 s after the key).
+
+| layer | `slayerStateId` | when | evidence |
+|---|---:|---|---|
+| L0 | `0x1f` (31) | idle; entered 1.3-2 s after stopping, `slayerSequenceId` `0xbb0f` every time | all runs |
+| L0 | `0x1a` (26) | `w` pressed: walk start, `slayerSeqTimeAbs` reset; sequence `0x8b1d`; comes back with sequence `0xaa2f` during a sprint | poseA 11:47:03.9 / 09.1, joinwalk 11:25:22.4 |
+| L0 | `0x0d` (13) | ~0.5 s into a `w` hold, sequence `0x8b1a`: walk -> run transition (the speed byte `group1.bit0` peaks at 0x5a) | poseA 11:47:04.4, 10.9, 12.2 |
+| L0 | `0x0b` (11) | right after a `shift` tap while moving (dodge), sequence `0x962d`, held ~1 s | poseA 11:47:04.8 (key 04.83), 10.9 |
+| L0 | `0x07` (7) | `shift` held while moving: sprint start, sequence `0xad4b`; `group0.bit44` starts counting up each 150 ms while sprinting | poseA 11:47:10.2 (key 10.04) |
+| L0 | `0x0c` (12) | once, mid-sprint, sequence `0xa146` (unknown sub-state) | poseA 11:47:12.2 |
+| L0 | `0x1b` (27) | keys released while running: coming to a stop, ~1.3 s, then `0x1f` | poseA 11:47:13.2, actions2 08:22:34.5, alcdodge 18:31:27 |
+| L0 | `0x0e` (14) | `space`: jump, sequence `0xb30a`, back to `0x1f` after 1.8 s | poseA 11:47:00.7 (key 00.62) |
+| L1 | `0x2c` (44) | `1` pressed: weapon draw, sequence `0x881d`, 0.7 s | poseA 11:47:16.2 (key 16.05) |
+| L1 | `0x2d` (45) | weapon ready; re-entered with sequence 0 and a new `slayerStateIdStarted` on each cast (`q`, `r`) and on each hit | poseA 11:47:16.9, actions2 08:22:39.2 / 42.2, alchit |
+
+Open: layers 2 and 3 never changed in these runs; the sub-states `0x0c` and the `0x1a/0xaa2f` return
+inside a sprint are not explained; the names of the clips are in the assets, not here.
 
 Also moving with the pose but not named: `group0.bit37` (2 bytes, `c500`/`c000`/`0000`, the TODO
 calls it `segmentedStamina`), `group0.bit41` (1 byte, `e3`/`f3` toggling while moving) and
@@ -52,7 +65,6 @@ nothing on ledgers whose channel-1 stream does not frame with the known grammar
 
 ## Next
 
-Drive one action per capture with the join probe running (jump, dodge, sprint start, light attack,
-heavy attack, weapon draw/sheathe, mount) and add the rows. `nw_actions.py` writes a timeline that
-lines up with the output above; the sprint start itself produced no state change in `actions2`,
-only the `group1.bit0` ramp, so sprint may be a sequence inside state `0x1a` rather than a state.
+Still to drive, one per capture with the join probe: light and heavy attack (mouse, `nw_vmouse.py`),
+block, weapon sheathe, mount, swim, emotes. Then the asset side: `slayerStateId` -> slayer script ->
+clip, from the game files (nw-buddy), which is what a server would need to pick a state on purpose.

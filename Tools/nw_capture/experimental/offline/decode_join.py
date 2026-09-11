@@ -126,8 +126,9 @@ def timeline(items, v1):
         fields, used = decode_record_payload(bytes.fromhex(payload_hex), 0)
         if fields is None or used != length:
             continue
-        pose = {name: value if value is not None else chunk.hex()
-                for _bit, name, chunk, value in fields if name not in MOVING}
+        # bits 13..24 are the slayer triplets of layers 0..3; without the layer the four would collapse
+        pose = {name + (f"[L{(bit - 13) // 3}]" if 13 <= bit <= 24 else ""): value if value is not None else chunk.hex()
+                for bit, name, chunk, value in fields if name not in MOVING}
         if pose != last:
             stamp = datetime.datetime.fromtimestamp(ts / 1000).strftime("%H:%M:%S.%f")[:-3]
             print(stamp, pose)
