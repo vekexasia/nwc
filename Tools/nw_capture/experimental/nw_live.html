@@ -273,7 +273,7 @@ function draw() {
       ctx.beginPath(); ctx.moveTo(lx, ly - 8 * r); ctx.lineTo(lx + 8 * r, ly); ctx.lineTo(lx, ly + 8 * r); ctx.lineTo(lx - 8 * r, ly); ctx.closePath(); ctx.fill(); ctx.stroke();
       ctx.fillStyle = "#2a2622"; ctx.font = `${10 * r}px ${getComputedStyle(document.body).getPropertyValue("--mono")}`;
       const cap = st && st.capturing != null ? ` (${st.capturing === mine ? "we" : "they"} capture ${st.progress})` : "";
-      ctx.fillText(post ? `${post.name}${cap}` : `outpost ${objects[key].cp_state || ""}`, lx + 10 * r, ly + 4 * r);
+      ctx.fillText(post ? `${post.name}${cap}` : `outpost ${objects[key].cp_progress ?? ""}`, lx + 10 * r, ly + 4 * r);
       continue;
     }
     if ((objects[key] || {}).static) {                           // a placed thing: camp, node, object; a small square

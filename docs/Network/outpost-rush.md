@@ -84,8 +84,11 @@ the AZ reflection of the client scoreboard; the RMI unmarshal was not located.
 
 ## Not read yet
 
-- `CapturePointReplicatedState` (333) on the static outpost entities: which entity is Luna, Sol or
-  Astra (the map above has no position); the 3-byte delta byte.
+- `CapturePointReplicatedState` (333): the 3-byte delta `01 02 xx` is the capture progress 0..100
+  (e83 tracked Luna's map progress: 86 <-> 84..87, 96 <-> 96..99). The static entities form three
+  clusters at (1272, 11018), (1370, 10880), (1174, 11158); the middle one is Sol (midpoint of the
+  other two), Luna the one nearer the player's team spawn at (1230, 10751), Astra the far one:
+  inferred from one match, the page names them so. Other 333 entities (gates, spawns) stay unnamed.
 - The other map keys, the GameMode member bit order, `GroupData` (3451), `RaidData` (28), `Ownership`
   (3217), `Turret` (4276), `BeamAttack` (2947), `LootDrop` (2027), `DetectionVolumeEvent` (366).
 
