@@ -85,11 +85,13 @@ three spells and refilling to `100.0` within two seconds, confirmed by the playe
 bar fall during the same sequence. (The static table names this member `StaminaAmount`; the behaviour
 says mana.)
 
-Still open: the bits and widths of the other members, and stamina in particular - an injected `w` plus
-`shift` drained nothing and moved no object that can be tied to the player, so the sprint itself is in
-doubt (the movement keys are unverified, exactly as the spell keys were wrong before). Also open: how
-the non-health amounts encode their value, and the reader's third stage (a delta list, varint plus
-member vtable `+0x50`).
+Stamina is **not** in this state. It lives in ALC as `group0.bit37`, a half float carrying the missing
+segments as a negative deficit that returns to exactly `0`, identified by a capture whose only action
+was one dodge ([alc-protocol-reference.md](alc-protocol-reference.md)). (The static table calls this
+state's member 1 `StaminaAmount`; the wire says mana, so that name is wrong too.)
+
+Still open: the bits and widths of the other members, how the non-health amounts encode their value,
+and the reader's third stage (a delta list, varint plus member vtable `+0x50`).
 
 ### PlayerComponentReplicatedState: what we have
 
@@ -132,14 +134,11 @@ bundle header, **not** inside PlayerComponent; sending it alone fails to parse t
 3. **Decode**: `decode_vitals.py` / `decode_alc_state.py` turn a log into values.
 4. **Validate by behaviour, not by plausibility**: drive one action and check the value against the
    game's own output (the on-screen damage numbers for health, the jump arc for `distGround`, the
-   dodge for `segmentedStamina`). A float that merely looks plausible is not evidence. Note that
-   `segmentedStamina`'s **wire bit is not confirmed**: the schema index in
-   [alc-protocol-reference.md](alc-protocol-reference.md) is not the wire order, and no capture yet
-   ties a group-0 bit to a known stamina event (a dedicated capture with a single dodge would: then
-   the only bit that moves is the one to look at).
+   dodge for stamina). A float that merely looks plausible is not evidence.
 
-`nw_actions.py` plays a timed sequence (sprint, stand, casts, right-mouse self-drain) and writes a
-timeline, so a capture can be read per phase; that is how the player's own Vitals object is
+`nw_actions.py` plays a timed sequence (run with one dodge, stand, three spells, right-mouse
+self-drain) and writes a timeline, so a capture can be read per phase. Shift is the **dodge**, and the
+dodge is what spends stamina; that is how the player's own Vitals object is
 identified (the object whose health falls during the drain is the local player).
 
 ## Traps that cost real time

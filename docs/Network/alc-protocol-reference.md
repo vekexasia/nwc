@@ -365,9 +365,17 @@ These bit numbers are the **schema index** order, not the wire order. The client
 vector, observed live, gives different readers for the high bits (it reads bit 46 with the prefix
 varint reader, not a single byte), and `decode_alc_state.py` deliberately keeps that observed map
 instead of substituting this one. Consequence: a name above bit ~34 in this table is not yet a wire
-bit. For `segmentedStamina` in particular there is no confirmed wire bit; the group-0 bits seen
-changing across our captures are `bit41` (a packed state byte, `e3` <-> `f3`) and `bit37` (a half
-float taking `-4`, `-2`, `0`), neither of which is tied to a known action yet.
+bit. For `segmentedStamina` in particular the schema index does not prove the wire bit.
+
+One group-0 bit is now tied to an action: **`bit37`** is a **half float that is negative while stamina
+is missing and returns to exactly `0`**, and it is the only field that changes after a dodge. Evidence,
+capture `proton_20260911_091552-dodge` (30 s, nothing but one shift tap at the halfway point): `bit37`
+appears **zero times before the dodge and thirteen times after**, reading `-4.0`, `-2.0`, then `0.0`.
+The same signature shows in the older captures: the drain capture goes `-5.0` -> `0.0`, the action
+capture `0.0` -> `-7.0` -> `-5.0` -> `0.0`. So stamina is carried as a **deficit in segments**, which
+matches the `segmentedStamina` name - but the name is still an inference, because the schema index is
+not the wire bit. The other changing group-0 bit, `bit41` (`e3` <-> `f3`), is a packed state byte and
+is not tied to an action.
 
 Vector families, in case a single row is not enough: `slayerStateId`, `slayerSequenceId` and
 `slayerStateIdStarted` are vectors of 4 elements (`+0xac0`, `+0xbe0`, `+0xb60`), and

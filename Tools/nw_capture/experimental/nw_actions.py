@@ -10,9 +10,10 @@ so a capture taken at the same time can be read per phase:
     .venv-capture/bin/python Tools/nw_capture/experimental/nw_capture_probe.py \
         --probe Tools/nw_capture/experimental/nw_state_probe.js --seconds 45 --label actions
 
-Sprint changes the stamina fields, the spells (Q, R, F) the mana ones, and the right mouse button
-player's own health with the Void Gauntlet, which is what identifies the player's Vitals object in
-a capture (its health deltas match the numbers on screen).
+Shift is the dodge and a dodge is what consumes stamina, so the run phase is marked separately
+around a single tap of shift. The spells are Q, R and F and they consume mana. The right mouse button
+drains the player's own health with the Void Gauntlet, which is what identifies the player's Vitals
+object in a capture (its health deltas match the numbers on screen).
 """
 import json, sys, time
 sys.path.insert(0, "/home/andrea/git/personale/new-world-capture/Tools/nw_capture/experimental")
@@ -37,8 +38,9 @@ try:
     vk.focus_window(vk.GAME_CLASS); time.sleep(1.2)
     if vk.active_window()[0] != vk.GAME_CLASS:
         print("ABORT: no focus", file=sys.stderr); raise SystemExit(3)
-    mark("sprint_start"); down(vk.KEYS["w"]); down(vk.KEYS["shift"]); time.sleep(7)
-    up(vk.KEYS["shift"]); up(vk.KEYS["w"]); mark("sprint_end")
+    mark("run_start"); down(vk.KEYS["w"]); time.sleep(1.0)
+    mark("dodge"); down(vk.KEYS["shift"]); time.sleep(0.2); up(vk.KEYS["shift"])
+    time.sleep(5.8); up(vk.KEYS["w"]); mark("run_end")
     mark("stand1"); time.sleep(4)
     mark("cast1"); down(vk.KEYS["q"]); time.sleep(0.2); up(vk.KEYS["q"]); time.sleep(2.5)
     mark("cast2"); down(vk.KEYS["r"]); time.sleep(0.2); up(vk.KEYS["r"]); time.sleep(2.5)

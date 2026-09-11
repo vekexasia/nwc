@@ -253,9 +253,13 @@ watched the **mana** bar fall when Q, R and F were pressed, and member 1 of the 
 `64.10` right after - three casts from full at about 12 each. So **member 1 (`+0x7e8`), field bit 0, is
 mana**, confirmed, in a float32 `[0, 100]` that refills to 100 within two seconds.
 
-Stamina then is the one still missing, and the sprint is what is in doubt: the injected `w` plus
-`shift` drained nothing, and no object that can be tied to the player moved during the sprint window.
-The movement keys are the thing to check next, the same way the spell keys were wrong before.
+**Shift is the dodge**, not sprint, so the earlier "sprint" phases were a run with one dodge in them.
+That is where stamina went, and stamina is not a Vitals field at all: it is ALC `group0.bit37`, a half
+float carrying the missing **segments** as a negative deficit that returns to exactly `0`. Evidence: the
+capture `proton_20260911_091552-dodge` (30 s, idle around one shift tap) has `bit37` **zero times
+before the dodge and thirteen times after**, reading `-4.0`, `-2.0`, `0.0`; the drain capture reads
+`-5.0` -> `0.0` and the action capture `0.0` -> `-7.0` -> `-5.0` -> `0.0`. That closes the third player
+number, after health and mana.
 
 Also to re-check: the earlier captures interpreted the health drops as the player's own right-mouse
 drain. If the character was in a settlement then too, the ability cannot have fired, and the drops
