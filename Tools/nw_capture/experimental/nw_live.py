@@ -652,6 +652,10 @@ def apply_line(line: str, state: LiveState) -> None:
                 state.position_static(f"e{item[1]}", x, y)
             elif item[3] == 12:
                 state.info(f"e{item[1]}", gatherable=True)
+            elif item[3] == 333:
+                # CapturePointReplicatedState (Outpost Rush outposts, static entities): the 3-byte delta
+                # `01 02 xx` is member 1; 01 and 40 seen, meaning open (ownership or contest)
+                state.info(f"e{item[1]}", capture_point=True, cp_state=item[6][4:6] if item[6][:4] == "0102" and item[5] == 3 else None)
             elif item[3] == 3183 and NAMES:
                 weapons = [i for i in book_hits(item[6], ("itemdefinitions_",)) if i[:2].lower() in ("1h", "2h")]
                 if weapons:

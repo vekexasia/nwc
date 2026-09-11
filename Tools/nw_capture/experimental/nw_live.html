@@ -254,6 +254,13 @@ function draw() {
     const [lx, ly] = toScreen(...toPx(trail[trail.length - 1]));
     if (lx < -40 || ly < -40 || lx > w + 40 || ly > h + 40) continue;
     ctx.fillStyle = k === "animal" ? "#f3ecdc" : colour[k]; ctx.strokeStyle = k === "animal" ? colour.animal : "#f3ecdc"; ctx.lineWidth = 1.5 * r;
+    if ((objects[key] || {}).capture_point) {                    // Outpost Rush outpost: a diamond with its state byte
+      ctx.fillStyle = "rgba(120,80,160,0.85)"; ctx.strokeStyle = "#f3ecdc";
+      ctx.beginPath(); ctx.moveTo(lx, ly - 8 * r); ctx.lineTo(lx + 8 * r, ly); ctx.lineTo(lx, ly + 8 * r); ctx.lineTo(lx - 8 * r, ly); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#2a2622"; ctx.font = `${10 * r}px ${getComputedStyle(document.body).getPropertyValue("--mono")}`;
+      ctx.fillText(`outpost ${objects[key].cp_state || ""}`, lx + 10 * r, ly + 4 * r);
+      continue;
+    }
     if ((objects[key] || {}).static) {                           // a placed thing: camp, node, object; a small square
       ctx.fillStyle = objects[key].gatherable ? "rgba(77,124,74,0.8)" : "rgba(138,123,102,0.6)";
       ctx.fillRect(lx - 3 * r, ly - 3 * r, 6 * r, 6 * r);
