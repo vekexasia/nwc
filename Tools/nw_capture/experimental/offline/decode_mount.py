@@ -12,9 +12,12 @@ Owner (member mask 02, member 1), fields in bit order:
     bit 7  unknown width (5 or 9 bytes seen): parsing stops there
 Remote (member mask 0c or 08, members 2 and 3):
     member 2 field 01  u32 BE mount type id, 0 when dismounted (e4fdfda0 on two different players)
-    member 3 field 01  u8 state: 01 summoning, 05 riding, 04 on foot; field 03 adds a u32 (colours)
+    member 3 field 01  u8 state: 01 summoning, 05 riding, 04 mount out but owner on foot (walking speeds);
+                       field 03 adds a u32 (colours). Riding = state in RIDING_STATES, not id != 0
 """
 import struct
+
+RIDING_STATES = (1, 3, 5, 9)     # 1 summoning/mounting, 5 riding, 3 and 9 seen at riding speed; 4 = mount out, owner on foot
 
 
 def parse_mount(payload: bytes):
@@ -52,7 +55,8 @@ def parse_mount(payload: bytes):
             return {}
         mount_id = struct.unpack(">I", payload[index + 1:index + 5])[0]
         out["mount_id"] = f"{mount_id:08x}"
-        out["mounted"] = mount_id != 0
+        if mount_id == 0:
+            out["mounted"] = False
         index += 5
     if member_mask & 0x08:
         if len(payload) < index + 2:
@@ -61,6 +65,9 @@ def parse_mount(payload: bytes):
         if field_mask & ~0x03:
             return {}
         out["mount_state"] = payload[index + 1]
+        # id set + state 4 moved at walking speed (median 0, p90 4.5 u/s over 4,995 samples); states 1 and
+        # 5 at 8.6 / 6.0 median, p90 11.4: a mount can be out while its owner stands on foot (state 4)
+        out["mounted"] = out["mount_state"] in RIDING_STATES
         index += 2
         if field_mask & 0x02:
             index += 4
@@ -78,9 +85,10 @@ def check():
     assert parse_mount(bytes.fromhex("0281010c4120000041a00000")) == {"mounted": True}   # bit 7 stops the walk
     assert parse_mount(bytes.fromhex("020401")) == {}                                     # bit 2 alone: nothing to say
     riding = parse_mount(bytes.fromhex("0c01e4fdfda0030500000000"))
-    assert riding == {"mount_id": "e4fdfda0", "mounted": True, "mount_state": 5}, riding
+    assert riding == {"mount_id": "e4fdfda0", "mount_state": 5, "mounted": True}, riding
     assert parse_mount(bytes.fromhex("0c0100000000030400000000"))["mounted"] is False
-    assert parse_mount(bytes.fromhex("080105")) == {"mount_state": 5}
+    assert parse_mount(bytes.fromhex("0c01e4fdfda0030400000000"))["mounted"] is False   # mount out, owner on foot
+    assert parse_mount(bytes.fromhex("080105")) == {"mount_state": 5, "mounted": True}
     assert parse_mount(bytes.fromhex("0c01e4fdfda003050000000000")) == {}
     print("decode_mount check ok")
 

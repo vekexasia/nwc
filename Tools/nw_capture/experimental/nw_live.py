@@ -357,6 +357,8 @@ class LiveState:
                     slot[name] = decoded[name]
             if decoded.get("mount_id") and decoded["mount_id"] != "00000000":
                 slot["mount_name"] = name_of(decoded["mount_id"])
+            if decoded.get("mounted") is False:
+                slot.pop("mount_name", None)      # "on X" only while riding
             slot["mount_at"] = time.time()
 
     def cooldowns(self, key: str, entries: list) -> None:
@@ -533,7 +535,8 @@ def apply_line(line: str, state: LiveState) -> None:
                 if NAMES:
                     state.tags(f"e{item[1]}", "vitals_ids", book_hits(item[6], ("vitals", "gatherables")), keep=2)
             elif item[3] == 899 and item[6][:4] in ("0101", "0301") and item[5] >= 6:
-                state.info(f"e{item[1]}", level=int(item[6][4:12], 16))
+                # the wire value is the level minus one: level-70 players read 69 on the page
+                state.info(f"e{item[1]}", level=int(item[6][4:12], 16) + 1)
             elif item[3] == 3152 and item[6][:2] == "04" and item[5] >= 3 and int(item[6][2:4], 16) & 1:
                 state.info(f"e{item[1]}", faction=int(item[6][4:6], 16))
             elif item[3] == 1652:
@@ -886,7 +889,7 @@ def self_check() -> int:
             [1, 36, 70, 899, "0x0", 6, "010100000040"], [2, 36, 49, 3152, "0x0", 6, "040f03000100"],
             [3, 36, 62, 1652, "0x0", 18, "010f42c8000042c80000000000003f800000"], [4, 36, 49, 3152, "0x0", 3, "040201"]]}), state15)
         e36 = state15.objects["e36"]
-        assert e36["level"] == 64 and e36["faction"] == 3 and e36["mana"] == 100.0 and e36["mana_max"] == 100.0, e36
+        assert e36["level"] == 65 and e36["faction"] == 3 and e36["mana"] == 100.0 and e36["mana_max"] == 100.0, e36
         apply_line(json.dumps({"type": "join_samples", "items": [[5, 36, 1, 129, "0x0", 92,
             "010f05000000" + "0400000005000000" + "03000000e1000000" + "0200000005000000" + "0100000005000000" + "0000000005000000"
             + "01b41e000001b41e05000000" + "00" * 34]]}), state15)

@@ -54,7 +54,7 @@ at 50 and two flag bytes at 54 on the 56-byte mob payload. The property names
 `vitalsId`, `vitalsCategoryId`, `vitalsLevel`, `invulnerability` sit in `.rdata` next to
 `HealthAmount` (`0x14855F7B0`).
 
-ProgressionComponent 899: member 0 bit 0 u32 = level (12 -> 1,066 hp, 69 -> 18k hp).
+ProgressionComponent 899: member 0 bit 0 u32 = level minus one (the player read 69 for level-70 characters; 12 -> 1,066 hp).
 FactionComponent 3152: member 2 bit 0 u8 = faction id; `javelindata_factiondata` rows Faction1..3
 carry `FactionIntro_Syndicate/Marauders/Covenant_Recruitment`, so 1 Syndicate, 2 Marauders, 3 Covenant.
 AttributeComponent 129: `01 0f`, u32 count 5, then (id u32, points u32) pairs, ids 4..0; the attribute
