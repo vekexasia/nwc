@@ -62,8 +62,18 @@ own object, later a right-mouse drain falling in 260.8 steps). Read it with
 02 01 01 01 02 40 ...  opcode 02
 ```
 
-The other 18 fields of the static table are not mapped to opcode+bit yet, and the reader's third
-stage (a delta list, varint plus member vtable `+0x50`) is unexplored.
+The other 18 fields are not mapped to opcode+bit yet, and the reader's third stage (a delta list,
+varint plus member vtable `+0x50`) is unexplored. A pass over the player's 191 payloads refused to
+name stamina or mana, and it was right to: the payloads correlated with sprint (`08/02`) and with
+the casts (`02/01`, `04/03`) do not match the static 4-byte codecs as fixed-width single fields.
+
+Why the flat model fails is now clear from the registration list: the first three entries are
+**3-element vectors of `0x28` bytes** at `+0x7c0`, `+0x7e8`, `+0x810` - the member offsets of
+`HealthAmount`, `StaminaAmount` and `ManaAmount` - and their element initialiser `FUN_143bb81a0`
+loads descriptor `0x1480ff160`, the **u32** codec. So each amount is a structure of three 4-byte
+elements (current, maximum, rate, in some order) and the masks index *elements*, not whole fields,
+which also explains the odd masks (`0x80`, `80 30`). Next step is static: extract the element order
+and codec of those three vectors, then bit -> (vector, element) -> name.
 
 ### PlayerComponentReplicatedState: what we have
 
