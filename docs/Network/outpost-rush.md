@@ -30,8 +30,9 @@ around x 1150-1400, y 10850-11250; the player entered at 21:51:13 (`OnTeleportWi
   enemies from these two.
 - **Deaths**: 12 `ClientSyncDeathRecap` (4299), all by players: name + `24` + uuid string + zeros + f32
   last hit + f32 max health (9,237). Matches the 12 deaths on the end screen.
-- **Damage**: 292 `OnDamage` taken, 56 `OnDamageDealt` (the player landed few hits: 87,390 total on
-  the end screen; the RMI entries sum is the check to run).
+- **Damage**: 292 `OnDamage` taken (sum 226,441 over 12 deaths) and 56 `OnDamageDealt` summing to
+  94,714 against 87,390 on the end screen: the scoreboard column is not the plain sum of the entries
+  (turret or NPC hits, or the absorbed part, are the likely difference).
 - **Capture points**: `CapturePointReplicatedState` (333) on static entities at (1174, 11158),
   (1367, 10873), (1255, 10978), (1304, 11248) and a few more indices; full state 29 bytes
   (`01 03` + 16 zero bytes + `04`/`05` + zeros + `01 00`), deltas `01 02 <byte>` with the byte moving

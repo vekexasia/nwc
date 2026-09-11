@@ -597,3 +597,14 @@ RMI census (it needs its own capture slot: one Frida session at a time).
   start). Kill in one command, start in the next.
 - Also added: death recap (killed by X, last hit, max health), the mobs targeting the player
   (`OnSelectedAsTarget`), XP and rested pool, pose `0x15` riding.
+
+## Update 2026-09-11 (22:40): Outpost Rush captured end to end
+
+- `~/Downloads/opr_ledger.bin` (79 MB, 21:33:42-22:21:32, no gaps) plus the 241 MB JSON log. Ground
+  truth from the end screen and the full analysis state are in docs/Network/outpost-rush.md.
+- Live page during the match: teams (green/red) from the warboard manifest + PlayerComponent uuid/name,
+  capture points as diamonds, PvP death recap ("killed by quaateme"), chat, per-hit damage.
+- Open: team score, per-outpost points and the per-player warboard stats are in compact varint
+  streams (`GameModeReplicatedState` e13, `OnUpdateWarboardStats` 839) not parsed yet; the oracle
+  values are written down. Attribute ids closed (4 INT, 3 DEX, 2 STR, 1 FOC, 0 CON).
+- Capture stopped at 22:21; the live server is down (restart without `--auto-capture` unless wanted).
