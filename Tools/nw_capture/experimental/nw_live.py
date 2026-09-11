@@ -37,7 +37,7 @@ sys.path.insert(0, str(HERE / "offline"))
 from decode_cooldowns import parse_cooldowns  # noqa: E402
 from decode_mount import parse_mount  # noqa: E402
 from decode_pose import pose_from_payload  # noqa: E402
-from decode_rmi import parse_chat, parse_chat_batch, parse_damage_dealt, parse_damage_taken  # noqa: E402
+from decode_rmi import DAMAGE_TYPES, parse_chat, parse_chat_batch, parse_damage_dealt, parse_damage_taken  # noqa: E402
 from decode_stamina import parse_stamina  # noqa: E402
 from decode_vitals import parse_full_state, parse_members  # noqa: E402  the shared, verified payload model
 
@@ -603,12 +603,13 @@ def apply_line(line: str, state: LiveState) -> None:
                 taken = parse_damage_taken(bytes.fromhex(item[2]))
                 if taken:
                     state.hit({"key": "e1", "delta": -round(sum(e["amount"] for e in taken["entries"])),
-                               "types": [e["type"] for e in taken["entries"]]})
+                               "types": [DAMAGE_TYPES.get(e["type"], str(e["type"])) for e in taken["entries"]]})
             elif item[1] == 2071:
                 dealt = parse_damage_dealt(bytes.fromhex(item[2]))
                 if dealt and dealt["entries"]:
                     state.hit({"key": "dealt", "name": "you hit", "delta": -round(sum(e["amount"] for e in dealt["entries"])),
-                               "types": [e["type"] for e in dealt["entries"]], "dot": dealt["attack"] == "0" * 16})
+                               "types": [DAMAGE_TYPES.get(e["type"], str(e["type"])) for e in dealt["entries"]],
+                               "dot": dealt["attack"] == "0" * 16})
     elif kind == "vitals_samples":
         for item in items:
             if len(item) < 3:

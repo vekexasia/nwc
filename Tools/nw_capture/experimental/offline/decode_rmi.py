@@ -82,6 +82,13 @@ def parse_chat_batch(payload: bytes):
     return out
 
 
+# javelindata_damagetypes.datasheet, IntID column: the entry type byte matches it (05 Thrust + 0e
+# Nature on the player's gemmed weapon, 0b Corruption and 0a Lightning taken from corrupted casters)
+DAMAGE_TYPES = {1: "True", 2: "Falling", 3: "Standard", 4: "Slash", 5: "Thrust", 6: "Strike", 7: "PhysFire",
+                8: "Arcane", 9: "Fire", 10: "Lightning", 11: "Corruption", 12: "Siege", 13: "Ice", 14: "Nature",
+                15: "Acid", 16: "Brimstone"}
+
+
 def _entries(payload: bytes, index: int):
     """count u8, then count x (damage type u8, amount f32, f32 still unread)."""
     if index >= len(payload):

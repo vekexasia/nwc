@@ -17,8 +17,10 @@ player's own entity ends in the same 8 bytes (`31df13d046e908f8` on 2026-09-11).
 Evidence (live 20260911-201741, the player's death at 20:45): 34 OnDamage hits sum to 9,811
 against 9,659.16 max health plus regen ticks of 43.9; `fraction * maxHealth` reproduces the amount
 to 0.01. The player's own hits carry two entries when the weapon has an elemental gem (type 05
-1158.8 + type 0e 392.7, the 25 % conversion). Damage type values seen: 03, 05, 08, 0a, 0b, 0e; the
-enum is not named yet.
+1158.8 + type 0e 392.7, the 25 % conversion). The damage type byte is the `IntID` column of
+`javelindata_damagetypes.datasheet`: 3 Standard, 5 Thrust, 8 Arcane, 10 Lightning, 11 Corruption,
+14 Nature (the player's weapon: Thrust plus a Nature gem; the corrupted casters: Corruption and
+Lightning).
 
 Open: the trailing f32 of every entry (0.49 to 0.68, constant per attack), the flags bits, the
-attack id hash, the damage type names.
+attack id hash.
