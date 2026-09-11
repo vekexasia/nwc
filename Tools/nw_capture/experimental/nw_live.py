@@ -18,6 +18,7 @@ The decoders are the same ones used offline; this only adds the tailing.
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import math
 import os
@@ -48,7 +49,8 @@ except Exception:                     # noqa: BLE001 - the book is optional
     NAMES = {}
 
 
-def book_hits(payload_hex: str, sheet_prefixes: tuple) -> list:
+@functools.lru_cache(maxsize=1 << 16)
+def book_hits(payload_hex: str, sheet_prefixes: tuple) -> tuple:
     """Datasheet ids found as 4-byte crc32 windows in a payload, restricted to sheets we expect.
 
     ponytail: a window scan, not a field decode; with 265k ids the chance of a stray match per window
@@ -60,7 +62,7 @@ def book_hits(payload_hex: str, sheet_prefixes: tuple) -> list:
         entry = NAMES.get(raw[index:index + 4].hex())
         if entry and entry["sheet"].startswith(sheet_prefixes) and entry["id"] not in found:
             found.append(entry["id"])
-    return found
+    return tuple(found)
 
 
 def name_of(crc_hex: str) -> str:
