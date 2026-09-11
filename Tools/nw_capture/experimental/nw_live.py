@@ -614,18 +614,19 @@ def apply_line(line: str, state: LiveState) -> None:
                 decoded = parse_stamina(bytes.fromhex(item[6]))
                 if "stamina" in decoded:
                     state.info(f"e{item[1]}", mana=round(decoded["stamina"], 1), mana_max=decoded.get("stamina_max"))
-            elif item[3] == 129 and item[6][:4] == "010f" and item[5] >= 42:
-                # AttributeComponent full state: five (points u32, id u32) pairs, ids 4..0, then a u8.
-                # There is no count: read as count + (id, value) the fifth value fell on a varint and
-                # STR came out as 7 or garbage (50 records of the player: 5, 5, 225, 5, 5 on ids 4..0).
-                # Ids read on the player's sheet: 362 on id 2 = DEX, 116 on id 3 = INT (21:00), and the
-                # point put on CON at 21:23 landed as (id 0, 1) in the pending list after the pairs. STR 1 and
-                # FOC 4 follow the UI order (STR, DEX, INT, FOC) with CON moved first; not proven yet.
+            elif item[3] == 129 and item[6][:4] == "010f" and item[5] >= 43:
+                # AttributeComponent full state: u32 count 5, then (id u32, total u32) for ids 4..1, then
+                # u32 0 and the CON total as one byte. Read on the player's own respec (21:00-21:30): 116 on
+                # id 4 and 362 on id 3 with the sheet showing INT 116 / DEX 362; the point put on STR moved
+                # id 2 (5 -> 6), the one on CON moved the byte after id 0 (5 -> 6) and both appeared in the
+                # pending list further on as (id, points). FOC = 1 by elimination.
                 raw = bytes.fromhex(item[6])
-                pairs = [struct.unpack_from("<II", raw, 2 + 8 * i) for i in range(5)]
-                if [i for _, i in pairs] == [4, 3, 2, 1, 0]:
-                    names = ("CON", "STR", "DEX", "INT", "FOC")
-                    state.info(f"e{item[1]}", attributes={names[i]: v for v, i in pairs})
+                pairs = [struct.unpack_from("<II", raw, 6 + 8 * i) for i in range(4)]
+                if struct.unpack_from("<I", raw, 2)[0] == 5 and [i for i, _ in pairs] == [4, 3, 2, 1] and raw[38:42] == b"\0\0\0\0":
+                    names = {4: "INT", 3: "DEX", 2: "STR", 1: "FOC"}
+                    attributes = {names[i]: v for i, v in pairs}
+                    attributes["CON"] = raw[42]
+                    state.info(f"e{item[1]}", attributes=attributes)
             elif item[3] == 13 and item[5] >= 10 and item[6][:2] == "01" and int(item[6][2:4], 16) & 3 == 3:
                 x, y = struct.unpack(">ff", bytes.fromhex(item[6][4:20]))
                 state.position_static(f"e{item[1]}", x, y)
@@ -1003,10 +1004,10 @@ def self_check() -> int:
         apply_line(json.dumps({"type": "join_samples", "items": [[6, 36, 70, 899, "0x0", 15, "03010000004003001c10eb0001d808"],
                                                                  [7, 36, 70, 899, "0x0", 10, "0203001c3b9b0001c2b0"]]}), state15)
         assert (e36["level"], e36["xp"], e36["rested_xp"]) == (65, 1850267, 115376), e36
-        apply_line(json.dumps({"type": "join_samples", "items": [[5, 36, 1, 129, "0x0", 100,
-            "010f05000000040000000500000003000000e10000000200000005000000010000000500000000000000070001a90a000001a90a05"
-            + "0000000000000000000000000000000000000000000000ee01000200000003000000dc000000000000000200000002"]]}), state15)
-        assert state15.objects["e36"]["attributes"] == {"FOC": 5, "INT": 5, "DEX": 225, "STR": 5, "CON": 5}, state15.objects["e36"]
+        apply_line(json.dumps({"type": "join_samples", "items": [[5, 36, 1, 129, "0x0", 102,
+            "010f050000000400000005000000030000000500000002000000060000000100000005000000000000000600"
+            + "01cb6007000001cb6007050000000000000000000000000000000000000000000001d40100020000000200000001000000000000000100000002"]]}), state15)
+        assert state15.objects["e36"]["attributes"] == {"INT": 5, "DEX": 5, "STR": 6, "FOC": 5, "CON": 6}, state15.objects["e36"]
 
         # a static position stays until an ALC one arrives, and never overrides one
         apply_line(json.dumps({"type": "join_samples", "items": [[1, 41, 1, 13, "0x0", 15, "0103460ab2be4582dc881d0603ff09"], [2, 41, 0, 12, "0x0", 3, "010108"]]}), state15)

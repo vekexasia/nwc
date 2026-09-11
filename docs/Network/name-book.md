@@ -62,15 +62,14 @@ the rested bonus doubling the gain. The level byte moved 0x40 -> 0x41 as XP went
 so the counter is not "XP within the level"; what the next threshold is stays open.
 FactionComponent 3152: member 2 bit 0 u8 = faction id; `javelindata_factiondata` rows Faction1..3
 carry `FactionIntro_Syndicate/Marauders/Covenant_Recruitment`, so 1 Syndicate, 2 Marauders, 3 Covenant.
-AttributeComponent 129: `01 0f`, then five (points u32, id u32) pairs, ids 4..0, then a u8 (5..7 seen).
-There is no count: read as count + (id, points) the fifth value fell on a varint and STR came out as 7
-or worse. Ids from the player's own sheet: at 21:00:53 the pairs read 116 on id 3 and 362 on id 2
-while the screen showed INT 116 and DEX 362 (so the values are the totals, gear included); after the
-respec at 21:23:09 all five read 5 and the point put on CON at 21:23:13 appeared as `0001 00000000
-00000001` (one pending entry: id 0, 1 point) in the list that follows, so id 0 = CON. The tail is:
-u8 revision (5 -> 6 on that change), `00 01 <varint>` twice, u8 5, zeros, `01 <varint unspent points>`
-(470 -> 469), u16 pending count, (id u32, points u32) x count, u32 2. STR = 1 and FOC = 4 are the UI
-order with CON moved first, not yet seen moving.
+AttributeComponent 129 full state: `01 0f`, u32 count 5, (id u32, total u32) for ids 4..1, u32 0 and
+the CON total as one byte; then u8 revision, `00 01 <varint>` twice, 05, zeros, `01 <varint unspent
+points>` (470 -> 469 -> 468), u16 pending count, (id u32, points u32) x count, u32 2. Read on the
+player's own respec: 116 on id 4 and 362 on id 3 with the sheet showing INT 116 / DEX 362 (totals,
+gear included); after the reset all five read 5; the point put on CON (21:23:13) moved the byte after
+id 0 to 6 and appeared as pending (0, 1); the point put on STR (21:30:25) moved id 2 to 6 and appeared
+as pending (2, 1). So 4 INT, 3 DEX, 2 STR, 1 FOC (by elimination), 0 CON. The first read (a count plus
+five u32 pairs) put the fifth value on the revision varint and STR came out as 7 or garbage.
 ManaComponent 1652 and StaminaComponent 4297 share one shape: six f32 BE in bit order (amount, max,
 winded countdown, regen delay, two multipliers).
 StatMultiplierTable 1525: `06 07`, then (u16 stat id, u32 basis points) entries, 10000 = 1.0x; a
