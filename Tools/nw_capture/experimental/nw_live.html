@@ -418,7 +418,7 @@ function render(snapshot) {
       `<b>${left > 0 ? left.toFixed(1) + "s" : "ready"}</b></div>`;
   }).join("") || '<div class="note" style="font-size:11px">cooldowns: none seen yet (they arrive when an ability is used)</div>';
   $("stNote").textContent = shown.winded_s > 0 ? "winded" : (shown.regen_delay_s > 0 ? "regen delay" : "");
-  $("hudGear").textContent = [(shown.weapons || []).length ? "weapons: " + shown.weapons.join(", ") : "",
+  $("hudGear").textContent = [(shown.titles || [])[0] ? `"${shown.titles[0]}"` : "", (shown.weapons || []).length ? "weapons: " + shown.weapons.join(", ") : "",
     (shown.effects || []).length ? "effects: " + shown.effects.slice(-6).join(", ") : "", shown.level ? `level ${shown.level}` : "",
     shown.faction ? (FACTIONS[shown.faction] || `faction ${shown.faction}`) : ""].filter(Boolean).join("  ·  ");
   $("mountText").textContent = shown.mounted ? `mounted${shown.mount_stamina != null ? ", horse stamina " + shown.mount_stamina : ""}` : "";

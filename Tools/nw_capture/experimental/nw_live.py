@@ -543,6 +543,10 @@ def apply_line(line: str, state: LiveState) -> None:
                 weapons = [i for i in book_hits(item[6], ("itemdefinitions_",)) if i[:2].lower() in ("1h", "2h")]
                 if weapons:
                     state.tags(f"e{item[1]}", "weapons", weapons, keep=4)
+            elif item[3] == 4176 and NAMES:
+                titles = book_hits(item[6], ("playertitles",))
+                if titles:
+                    state.tags(f"e{item[1]}", "titles", titles, keep=1)
             elif item[3] == 4236 and NAMES:
                 effects = book_hits(item[6], ("statuseffects",))
                 if effects:

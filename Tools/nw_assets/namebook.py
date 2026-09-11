@@ -24,7 +24,7 @@ BOOK = pak_extract.OUT / "namebook.json"
 LOC = pak_extract.OUT / "localization/en-us"
 SHEETS = pak_extract.OUT / "sharedassets/springboardentitites/datatables"
 IDENT = re.compile(r"^[A-Za-z0-9_.\-+:]{2,96}$")
-NAME_COLUMNS = ("DisplayName", "Name", "Description")
+NAME_COLUMNS = ("DisplayName", "Name", "TitleNeutral", "TitleMale", "Description")
 
 
 def crc(text: str) -> str:
