@@ -28,6 +28,7 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -105,6 +106,7 @@ class LiveState:
         self.lock = threading.Lock()
         self.objects: dict[str, dict] = {}
         self.me: dict = {"object": None, "method": None}
+        self.self_uuid: str | None = None   # PlayerManagerSelfIdentificationMsg: the character uuid
 
         self.history: dict[str, list[tuple[float, float, float]]] = {}
         self.auto_strikes: dict[str, int] = {}
@@ -375,6 +377,9 @@ class LiveState:
         with self.lock:
             self.chat_log.append({"at": time.time(), **message})
             del self.chat_log[:-60]
+            # the player's own name is not in any state chunk of e1; a chat line from the self uuid gives it
+            if self.self_uuid and message.get("sender_id") == self.self_uuid:
+                self._slot("e1")["name"] = message["name"]
 
     def cooldowns(self, key: str, entries: list) -> None:
         """CooldownTimersComponentReplicatedState deltas: one (id, start, expiry) per slot."""
@@ -599,6 +604,8 @@ def apply_line(line: str, state: LiveState) -> None:
             elif item[1] == 293:
                 for message in parse_chat_batch(bytes.fromhex(item[2])):
                     state.chat(message)
+            elif item[1] == 1628 and len(item[2]) >= 34:
+                state.self_uuid = str(uuid.UUID(hex=item[2][2:34]))
             elif item[1] == 3601:
                 taken = parse_damage_taken(bytes.fromhex(item[2]))
                 if taken:
@@ -951,6 +958,10 @@ def self_check() -> int:
             "fea3936321dfc8b931df13d046e908f8c45391666544b3fd990779b848b78ee4fdb34465669153c4b171e15b7545ea13200002054490da403f2aec560e43c455f53f2dc11a"],
             [2, 3601, "fc65cc3aebb909fc31df13d046e908f8fdb34465669153c422003d0e40134611e0a24531fef7429df16d010543a7ba103ef9b7f8"]]}), state17)
         assert [f["delta"] for f in state17.feed] == [-1552, -336], state17.feed
+        apply_line(json.dumps({"type": "rmi_samples", "items": [[3, 1628, "053d318010b4164b0b8bf76ee252186d6d5c3e1369"], [4, 4118,
+            "515ac85acc363edc31df13d046e908f82433643331383031302d623431362d346230622d386266372d366565323532313836643664"
+            "085065746157617474020000000000046369616f00000000000000000000011137363536313139393532323337343831380103"]]}), state17)
+        assert state17.objects["e1"]["name"] == "PetaWatt", state17.objects.get("e1")
 
         # every health change is a feed entry with its delta
         state14 = LiveState()

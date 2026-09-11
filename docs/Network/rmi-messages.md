@@ -12,6 +12,9 @@ player's own entity ends in the same 8 bytes (`31df13d046e908f8` on 2026-09-11).
 | 3601 | VitalsComponentClientFacet_OnDamage | receiver id u64, flags u16, damage / receiver max health f32, hit position xyz f32, u8 count, count x (damage type u8, amount f32, f32 unread) |
 | 2071 | DamageReceiverComponentClientFacet_OnDamageDealt | source id u64 byte-reversed, target id u64, source id, attack id u64 (zero on damage-over-time ticks, 1 s apart), flags u16, u8 count, entries as above |
 | 2570 | ActionListComponentClientFacet_OnServerSpreadshotProcessed | pellet records (blunderbuss) |
+| 1628 | PlayerManagerSelfIdentificationMsg | direct message: 05, the player's character uuid (16 bytes, the same uuid the chat sender string carries), more ids; the live page names e1 from a chat line sent by this uuid |
+| 4140 | SocialComponentClientFacet_PlayerDataResponse | 16 bytes, 01, uuid string, name string, then level and flags (inspected players) |
+| 3 | RegistrationResponseMsg | direct message: session ids and the build string `[RETAIL].Javelin.1.365.6031.6017213` |
 | 349 / 335 | PingMsg / TimeSynchMsg | direct messages, 8 bytes |
 
 Evidence (live 20260911-201741, the player's death at 20:45): 34 OnDamage hits sum to 9,811
