@@ -181,7 +181,7 @@ const toScreen = (px, py) => [canvas.width / 2 + (px - view.centre[0]) * view.sc
                               canvas.height / 2 + (py - view.centre[1]) * view.scale];
 const fromScreen = (sx, sy) => [view.centre[0] + (sx - canvas.width / 2) / view.scale,
                                 view.centre[1] + (sy - canvas.height / 2) / view.scale];
-const kind = key => key === selected ? "me" : (objects[key] && objects[key].animal ? "animal" : (objects[key] && objects[key].name ? "player" : "other"));
+const kind = key => key === selected ? "me" : (objects[key] && objects[key].npc && objects[key].name ? "animal" : (objects[key] && objects[key].name ? "player" : "other"));
 const target = () => objects[focused] || objects[selected];
 const colour = { me: "#8c2f2b", player: "#2f4b7c", animal: "#7a5c2e", other: "rgba(138,123,102,0.7)" };
 
@@ -250,7 +250,7 @@ function draw() {
       ctx.strokeStyle = "#2a2622"; ctx.lineWidth = 1 * r;
       ctx.beginPath(); ctx.arc(lx, ly, 9 * r, 0, Math.PI * 2); ctx.stroke();
     }
-    const slot = objects[key] || {}, name = k === "me" ? (slot.name || "you") : (k === "animal" && slot.name ? `${slot.name}'s animal` : slot.name);
+    const slot = objects[key] || {}, name = k === "me" ? (slot.name || "you") : (k === "animal" && slot.name ? `${slot.name}'s companion` : slot.name);
     const pose = poseText(slot);
     if (name && (k === "me" || view.scale >= 0.3)) labels.push([lx, ly, pose ? `${name} · ${pose}` : name, k]);
   }
@@ -348,7 +348,7 @@ function poseText(slot) {           // layer 0 is locomotion, layer 1 the weapon
   const p = slot.pose || {}, parts = [];
   if (slot.stance && slot.stance !== "standing") parts.push(slot.stance);
   if (slot.interacting) parts.push("gathering");
-  if (slot.mounted && !slot.animal) parts.push("mounted");
+  if (slot.mounted && !slot.npc) parts.push("mounted");
   if (p["0"] && p["0"] !== "idle") parts.push(p["0"]);
   if (p["1"] && p["1"] !== "weapon out") parts.push(p["1"]); else if (p["1"] === "weapon out" && !parts.length) parts.push("weapon out");
   return parts.join(", ");
@@ -412,8 +412,8 @@ function render(snapshot) {
   $("count").textContent = `${rows.length}`;
   $("rows").innerHTML = rows.map(([key, slot]) => {
     const age = Math.max(slot.position_at || 0, slot.vitals_at || 0), p = slot.position || {};
-    const cls = (key === selected ? "me" : (slot.animal ? "animal" : (slot.name ? "named" : ""))) + (key === focused ? " focused" : "") + (stale(key) ? " stale" : "");
-    return `<tr class="${cls}" data-key="${key}"><td>${key}</td><td>${slot.name ? (slot.animal ? `<span class="dim">${slot.name}'s animal</span>` : slot.name) : '<span class="dim">?</span>'}</td><td class="dim">${poseText(slot)}</td>` +
+    const cls = (key === selected ? "me" : (slot.npc && slot.name ? "animal" : (slot.name ? "named" : ""))) + (key === focused ? " focused" : "") + (stale(key) ? " stale" : "");
+    return `<tr class="${cls}" data-key="${key}"><td>${key}</td><td>${slot.name ? (slot.npc ? `<span class="dim">${slot.name}'s companion</span>` : slot.name) : '<span class="dim">?</span>'}</td><td class="dim">${poseText(slot)}</td>` +
       `<td class="num">${slot.health ?? "-"}</td><td class="num">${p.x ?? "-"}</td><td class="num">${p.y ?? "-"}</td>` +
       `<td class="num">${age ? (now - age).toFixed(0) + "s" : "-"}</td></tr>`;
   }).join("");

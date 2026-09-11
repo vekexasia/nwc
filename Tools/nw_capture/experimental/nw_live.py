@@ -259,12 +259,12 @@ class LiveState:
             slot["pose_at"] = time.time()
             self.counters["pose"] = self.counters.get("pose", 0) + 1
 
-    def kind(self, key: str, animal: bool) -> None:
-        """AlignToTerrainComponentReplicatedState (2850) rides on four-legged things: every companion
-        that carried a player's name in the 13:42 log had it, no player did. So its presence marks an
-        animal (pet, mount, creature) even when the entity wears its owner's name."""
+    def kind(self, key: str, player: bool) -> None:
+        """Player character or not, from the Vitals full state (member 0 field bit 1: 100+ on every
+        named player, 0 on pets, camps and mobs, 76 vs 76 entities over three logs). A pet wears its
+        owner's PlayerComponent name, so the name alone cannot tell."""
         with self.lock:
-            self._slot(key)["animal"] = animal
+            self._slot(key)["npc"] = not player
 
     def interacting(self, key: str, active: bool) -> None:
         """InteractReplicatedState (2930) `01 01 01` while an entity gathers/interacts, `01 01 00` after:
@@ -444,8 +444,8 @@ def apply_line(line: str, state: LiveState) -> None:
                 decoded = parse_mount(bytes.fromhex(item[6]))
                 if decoded:
                     state.mount(f"e{item[1]}", decoded)
-            elif item[3] == 2850:
-                state.kind(f"e{item[1]}", True)
+            elif item[3] == 15 and item[6][:4] == "01ff" and item[5] >= 10:
+                state.kind(f"e{item[1]}", struct.unpack(">f", bytes.fromhex(item[6][12:20]))[0] > 0)
             elif item[3] == 2930 and item[5] == 3 and item[6][:4] == "0101":
                 state.interacting(f"e{item[1]}", item[6][4:6] == "01")
     elif kind == "vitals_samples":
@@ -732,8 +732,10 @@ def self_check() -> int:
             [7, 8, 62, 5620, "0x0", 12, "0c0100000000030400000000"]]}), state10)
         assert state10.objects["e5"]["mounted"] is True and state10.objects["e8"]["mounted"] is False, state10.objects
         apply_line(json.dumps({"type": "join_samples", "items": [
-            [8, 8, 40, 2850, "0x0", 3, "010100"], [9, 5, 30, 2930, "0x0", 3, "010101"], [10, 8, 30, 2930, "0x0", 6, "010200000001"]]}), state10)
-        assert state10.objects["e8"]["animal"] is True and "animal" not in state10.objects["e5"], state10.objects
+            [8, 8, 41, 15, "0x0", 50, "01ff4687c51f43050000000bb0f4b46539ba9e0000000000000000ff01" + "00" * 21],
+            [8, 5, 41, 15, "0x0", 56, "01ff44090000000000000000b0f7b6e66155040000000000000000ff00" + "00" * 27],
+            [9, 5, 30, 2930, "0x0", 3, "010101"], [10, 8, 30, 2930, "0x0", 6, "010200000001"]]}), state10)
+        assert state10.objects["e8"]["npc"] is False and state10.objects["e5"]["npc"] is True, state10.objects
         assert state10.objects["e5"]["interacting"] is True and "interacting" not in state10.objects["e8"], state10.objects
 
         # entity keys use the verified join identity unless the user has chosen one
