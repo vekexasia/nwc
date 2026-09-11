@@ -546,3 +546,17 @@ driven table in `pose-state.md` and the player's own reports from the page remai
 
 Encoders proven byte-exact: ALC payload (`encode_alc_state.py`), record and frame
 (`encode_record.py`, 9,365 frames). Next on the replica path: Carrier and DTLS.
+
+Later the same night: Carrier encoder proven (`encode_carrier.py`: uncompressed datagrams byte-identical,
+LZ4 ones stream-identical after decompression; lz4.block.compress matches the original bytes for a
+quarter only, so the writer emits mode 0x80). The encoder stack below the replica is now ALC, record,
+frame, Carrier; DTLS is the last layer and the first one that talks to a real client, so it stays
+gated on explicit authorization. `nw_rmi_probe.js` (census of every type reference, bytes after the
+watched client-facet RMIs such as OnDamageDealt 2071) is written and untested: the game was off.
+Pose additions: L3 0x20 = dead, L2 0x2e = attacking, L0 0x09 gathering, L1 0x29 fishing, stance byte;
+L0 0x18 (entered from stopping/idle, speed 0, mount-independent) is still unnamed, candidates
+TurnInPlace / IdlePoseTrans from the CAGE aliases.
+
+The live server follows Tools/nw_capture/logs on port 8769; start a capture from the page when the
+game is back (`start capture`), then run `nw_rmi_probe.js` once through nw_capture_probe.py for the
+RMI census (it needs its own capture slot: one Frida session at a time).
