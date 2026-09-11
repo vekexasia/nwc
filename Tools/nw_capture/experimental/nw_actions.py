@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Scripted action sequence in the focused game: sprint, stand, casts, self-drain.
+r"""Scripted action sequence in the focused game: sprint, stand, casts, self-drain.
 
     .venv-capture/bin/python Tools/nw_capture/experimental/nw_actions.py
 
@@ -19,6 +19,11 @@ sys.path.insert(0, "/home/andrea/git/personale/new-world-capture/Tools/nw_captur
 import nw_vkeys as vk
 from evdev import UInput, ecodes as e
 
+
+# This script injects input and takes the focus, so asking for help must not play the sequence.
+if any(a in ("-h", "--help") for a in sys.argv[1:]):
+    print(__doc__)
+    raise SystemExit(0)
 TL = []
 def mark(p): TL.append((int(time.time()*1000), p)); print(">>", p, flush=True)
 
