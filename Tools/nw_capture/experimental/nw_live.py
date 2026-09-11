@@ -203,14 +203,15 @@ def tail(path: Path, state: LiveState, stop: threading.Event, poll: float = 0.2)
     """
     offset = 0
     pending = b""
-    if path.is_dir():
-        path = newest_log(path) or path
-        print(f"following the newest log in the directory: {path}")
+    directory = path if path.is_dir() else None
+    if directory is not None:
+        path = newest_log(directory) or path
+        print(f"following the newest log in {directory}: {path}", flush=True)
     while not stop.is_set():
-        if path.is_dir():
-            candidate = newest_log(path)
+        if directory is not None:
+            candidate = newest_log(directory)
             if candidate is not None and candidate != path:
-                print(f"new capture: {candidate}")
+                print(f"new capture: {candidate}", flush=True)
                 path, offset, pending = candidate, 0, b""
         try:
             size = path.stat().st_size
