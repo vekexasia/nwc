@@ -579,6 +579,13 @@ def apply_line(line: str, state: LiveState) -> None:
             elif item[3] == 899 and item[6][:4] in ("0101", "0301") and item[5] >= 6:
                 # the wire value is the level minus one: level-70 players read 69 on the page
                 state.info(f"e{item[1]}", level=int(item[6][4:12], 16) + 1)
+                if item[6][:2] == "03" and item[6][12:14] == "03" and item[5] >= 15:
+                    # member 1 fields 0 and 1, u32 BE: XP and the rested XP pool (the pool fell by exactly
+                    # half of every gain: 10,928 / 5,464, 108,398 / 54,199; the level byte moved as XP crossed
+                    # javelindata_xpamountsbylevel row 65, 1,997,361, and XP did not reset)
+                    state.info(f"e{item[1]}", xp=int(item[6][14:22], 16), rested_xp=int(item[6][22:30], 16))
+            elif item[3] == 899 and item[6][:4] == "0203" and item[5] >= 10:
+                state.info(f"e{item[1]}", xp=int(item[6][4:12], 16), rested_xp=int(item[6][12:20], 16))
             elif item[3] == 3152 and item[6][:2] == "04" and item[5] >= 3 and int(item[6][2:4], 16) & 1:
                 state.info(f"e{item[1]}", faction=int(item[6][4:6], 16))
             elif item[3] == 1652:
@@ -957,6 +964,9 @@ def self_check() -> int:
             [3, 36, 62, 1652, "0x0", 18, "010f42c8000042c80000000000003f800000"], [4, 36, 49, 3152, "0x0", 3, "040201"]]}), state15)
         e36 = state15.objects["e36"]
         assert e36["level"] == 65 and e36["faction"] == 3 and e36["mana"] == 100.0 and e36["mana_max"] == 100.0, e36
+        apply_line(json.dumps({"type": "join_samples", "items": [[6, 36, 70, 899, "0x0", 15, "03010000004003001c10eb0001d808"],
+                                                                 [7, 36, 70, 899, "0x0", 10, "0203001c3b9b0001c2b0"]]}), state15)
+        assert (e36["level"], e36["xp"], e36["rested_xp"]) == (65, 1850267, 115376), e36
         apply_line(json.dumps({"type": "join_samples", "items": [[5, 36, 1, 129, "0x0", 100,
             "010f05000000040000000500000003000000e10000000200000005000000010000000500000000000000070001a90a000001a90a05"
             + "0000000000000000000000000000000000000000000000ee01000200000003000000dc000000000000000200000002"]]}), state15)

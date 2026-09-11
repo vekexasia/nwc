@@ -55,6 +55,11 @@ at 50 and two flag bytes at 54 on the 56-byte mob payload. The property names
 `HealthAmount` (`0x14855F7B0`).
 
 ProgressionComponent 899: member 0 bit 0 u32 = level minus one (the player read 69 for level-70 characters; 12 -> 1,066 hp).
+Member 1 bits 0 and 1, u32 BE: XP and the rested XP pool. On six deltas of the player (20:42-21:07)
+the pool fell by exactly half of every XP gain (10,928 / 5,464; 108,398 / 54,199; 65,580 / 32,790),
+the rested bonus doubling the gain. The level byte moved 0x40 -> 0x41 as XP went 1,962,337 ->
+2,027,917 across `javelindata_xpamountsbylevel` row 65 (`XPToLevel` 1,997,361) and XP did not reset,
+so the counter is not "XP within the level"; what the next threshold is stays open.
 FactionComponent 3152: member 2 bit 0 u8 = faction id; `javelindata_factiondata` rows Faction1..3
 carry `FactionIntro_Syndicate/Marauders/Covenant_Recruitment`, so 1 Syndicate, 2 Marauders, 3 Covenant.
 AttributeComponent 129: `01 0f`, then five (points u32, id u32) pairs, ids 4..0, then a u8 (5..7 seen).

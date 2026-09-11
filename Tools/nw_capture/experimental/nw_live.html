@@ -430,7 +430,7 @@ function render(snapshot) {
   $("stNote").textContent = shown.winded_s > 0 ? "winded" : (shown.regen_delay_s > 0 ? "regen delay" : "");
   const attrs = shown.attributes ? Object.entries(shown.attributes).filter(([, v]) => v > 5).map(([k, v]) => `${k} ${v}`).join(" ") : "";
   $("hudGear").textContent = [(shown.titles || [])[0] ? `"${shown.titles[0]}"` : "", attrs, (shown.weapons || []).length ? "weapons: " + shown.weapons.join(", ") : "",
-    (shown.effects || []).length ? "effects: " + shown.effects.slice(-6).join(", ") : "", shown.level ? `level ${shown.level}` : "",
+    (shown.effects || []).length ? "effects: " + shown.effects.slice(-6).join(", ") : "", shown.level ? `level ${shown.level}` + (shown.xp ? ` xp ${shown.xp.toLocaleString()}${shown.rested_xp ? ` (rested ${shown.rested_xp.toLocaleString()})` : ""}` : "") : "",
     shown.faction ? (FACTIONS[shown.faction] || `faction ${shown.faction}`) : ""].filter(Boolean).join("  ·  ");
   $("mountText").textContent = shown.mounted ? `mounted${shown.mount_stamina != null ? ", horse stamina " + shown.mount_stamina : ""}` : "";
   $("hudPos").textContent = shown.position ? `x ${shown.position.x}  y ${shown.position.y}  elev ${shown.position.elevation ?? shown.position.elev_raw} m` : "";
