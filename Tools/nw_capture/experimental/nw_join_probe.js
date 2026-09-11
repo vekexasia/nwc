@@ -13,13 +13,20 @@ if (mod === null) throw new Error("NewWorld.exe module not found");
 const BASE = mod.base;
 const RECORD_FN = 0x6af20d0, CHUNK_FN = 0x6af2340;
 const PLAYER_TYPE = 3935, VITALS_TYPE = 15, PLAYER_NAME_FIELD = 0x870 + 0x10;   // docs/Network/player-component.md
+const TYPE_REF = 0x61acfe0, VARINT = 0x87b5c0, TYPE_REF_VARINT_SITE = 0x61ad00f;
+const lastType = {};
+// replicated states seen so far: their chunks already go out as join_samples
+const STATE_TYPES = new Set([10, 12, 13, 15, 16, 81, 100, 129, 185, 205, 497, 603, 670, 899, 911, 982, 1195, 1525, 1528, 1566,
+    1594, 1652, 1739, 1755, 1927, 1994, 2187, 2267, 2406, 2768, 2850, 2895, 2912, 2913, 2930, 2932, 2938, 3086, 3133, 3139,
+    3147, 3152, 3183, 3210, 3290, 3312, 3362, 3408, 3563, 3652, 3663, 3681, 3752, 3765, 3780, 3786, 3791, 3829, 3935,
+    4176, 4236, 4297, 4321, 4878, 4896, 4913, 5027, 5257, 5437, 5485, 5606, 5620, 5691, 6234, 6951]);
 const POS_ABS_READER = 0x2a433d0;    // worldPosAbs field reader: 10 wire bytes at ctx+0x10 (nw_pos_probe.js)
 const PLAYER_ID_FIELD = 0x7c0;
 const MAX_HEX = 200;
 const perThread = {};
 // join_samples is the raw evidence; the other three are the shapes nw_live.py already reads,
 // keyed by entity ("e<V1>") instead of by a transient object address.
-const buffers = { join_samples: [], pos_samples: [], vitals_samples: [], player_samples: [] };
+const buffers = { join_samples: [], pos_samples: [], vitals_samples: [], player_samples: [], rmi_samples: [] };
 let armed = false, timer = null, chunks = 0, records = 0;
 
 function emit(kind, item) {
@@ -96,6 +103,28 @@ function arm() {
                     emit("vitals_samples", [now, key, payload]);
                 }
                 emit("join_samples", item);
+            } catch (e) { }
+        }
+    });
+    // typed messages that are not replicated-state chunks (client-facet RMIs, Ping, TimeSynch): the type
+    // reference reader FUN_1461acfe0 sees every type on the wire; keep the ones the chunk hook does not,
+    // with the bytes that follow the reference (the message body). nw_rmi_probe.js is the standalone form.
+    Interceptor.attach(BASE.add(VARINT), {
+        onEnter(args) { this.out = args[2]; },
+        onLeave() {
+            if (this.returnAddress.sub(BASE).toInt32() !== TYPE_REF_VARINT_SITE) return;
+            try { lastType[this.threadId] = this.out.readU32(); } catch (e) { }
+        }
+    });
+    Interceptor.attach(BASE.add(TYPE_REF), {
+        onEnter(args) { this.ctx = args[2]; },
+        onLeave() {
+            const typeIndex = lastType[this.threadId];
+            if (typeIndex === undefined || STATE_TYPES.has(typeIndex) || typeIndex === 8 || typeIndex === 11) return;
+            try {
+                const cursor = this.ctx.add(0x10).readPointer(), end = this.ctx.add(0x08).readPointer();
+                const n = Math.min(160, end.sub(cursor).toInt32());
+                emit("rmi_samples", [Date.now(), typeIndex, n > 0 ? hexAt(cursor, n) : ""]);
             } catch (e) { }
         }
     });
