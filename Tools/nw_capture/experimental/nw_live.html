@@ -227,6 +227,17 @@ function draw() {
     if (lx < -40 || ly < -40 || lx > w + 40 || ly > h + 40) continue;
     ctx.fillStyle = colour[k]; ctx.strokeStyle = "#f3ecdc"; ctx.lineWidth = 1.5 * r;
     ctx.beginPath(); ctx.arc(lx, ly, (k === "me" ? 5 : 3.5) * r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    const heading = (objects[key] || {}).heading;
+    if (heading != null && view.scale >= 0.15) {                   // facing wedge: east = 0, north = 90, screen y is down
+      const a = heading * Math.PI / 180, len = (k === "me" ? 16 : 11) * r, base = (k === "me" ? 5 : 3.5) * r;
+      const ux = Math.cos(a), uy = -Math.sin(a);
+      ctx.fillStyle = colour[k];
+      ctx.beginPath();
+      ctx.moveTo(lx + ux * (base + len), ly + uy * (base + len));
+      ctx.lineTo(lx - uy * base * 0.8 + ux * base, ly + ux * base * 0.8 + uy * base);
+      ctx.lineTo(lx + uy * base * 0.8 + ux * base, ly - ux * base * 0.8 + uy * base);
+      ctx.closePath(); ctx.fill();
+    }
     if (key === focused && focused !== selected) {                 // the followed entity wears a ring
       ctx.strokeStyle = "#2a2622"; ctx.lineWidth = 1 * r;
       ctx.beginPath(); ctx.arc(lx, ly, 9 * r, 0, Math.PI * 2); ctx.stroke();

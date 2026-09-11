@@ -236,15 +236,17 @@ class LiveState:
             except Exception:
                 pass
 
-    def pose(self, key: str, layers: dict) -> None:
-        """ALC slayer state ids: layer 0 locomotion, layer 1 weapon, only when a record carries one."""
+    def pose(self, key: str, decoded: dict) -> None:
+        """ALC presentation: slayer state ids (layer 0 locomotion, layer 1 weapon) and the heading."""
         with self.lock:
             slot = self._slot(key)
             table = slot.setdefault("pose", {})
-            for layer, value in layers.items():
+            for layer, value in decoded.get("pose", {}).items():
                 table[str(layer)] = value["name"]
+            if "heading" in decoded:
+                slot["heading"] = decoded["heading"]
             slot["pose_at"] = time.time()
-            self.counters["pose"] = self.counters.get("pose", 0) + len(layers)
+            self.counters["pose"] = self.counters.get("pose", 0) + 1
 
     def cooldowns(self, key: str, entries: list) -> None:
         """CooldownTimersComponentReplicatedState deltas: one (id, start, expiry) per slot."""
@@ -394,8 +396,8 @@ def apply_line(line: str, state: LiveState) -> None:
                 continue
             if item[3] == 11:
                 # only records that carry a state id; the position of the same record is in pos_samples
-                if (layers := pose_from_payload(bytes.fromhex(item[6]))):
-                    state.pose(f"e{item[1]}", layers)
+                if (decoded := pose_from_payload(bytes.fromhex(item[6]))):
+                    state.pose(f"e{item[1]}", decoded)
             elif item[3] == 4297:
                 decoded = parse_stamina(bytes.fromhex(item[6]))
                 if decoded:
@@ -664,6 +666,10 @@ def self_check() -> int:
         record = (bytes([0x01]) + mask + bytes([0x4b, 0x1c, 0x0e])).hex()
         apply_line(json.dumps({"type": "join_samples", "items": [[4, 5, 16, 11, "0x0", len(record) // 2, record]]}), state10)
         assert state10.objects["e5"]["pose"] == {"0": "jump"}, state10.objects["e5"]
+        mask = encode_mask_varint((1 << 0) | (1 << 1) | (1 << 11))
+        record = (bytes([0x01]) + mask + bytes([0x4b, 0x1c, 0x46, 0x96])).hex()
+        apply_line(json.dumps({"type": "join_samples", "items": [[5, 5, 16, 11, "0x0", len(record) // 2, record]]}), state10)
+        assert state10.objects["e5"]["heading"] == -104.3, state10.objects["e5"]
 
         # entity keys use the verified join identity unless the user has chosen one
         state7 = LiveState()

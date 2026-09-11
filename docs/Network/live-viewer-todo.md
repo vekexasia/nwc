@@ -6,8 +6,8 @@ Tick an item only when it shows in the page from a live capture.
 
 | # | factor | source state | status |
 |---|---|---|---|
-| 1 | pose / action label (idle, walk, run, dodge, sprint, attack, weapon out) | ALC `slayerStateId` layers 0 and 1, table in [pose-state.md](pose-state.md) | in progress |
-| 2 | facing arrow on the marker | ALC `rotation` / `lookDir` (compressed quaternion), validate against the trail direction | todo |
+| 1 | pose / action label (idle, walk, run, dodge, sprint, attack, weapon out) | ALC `slayerStateId` layers 0 and 1, table in [pose-state.md](pose-state.md) | done, `511ed84` |
+| 2 | facing arrow on the marker | ALC `rotation`, smallest-three quaternion (`FUN_14087a8d0`), heading = yaw + 90 checked on two walks | done |
 | 3 | damage feed (dealt / taken) | `DamageReceiverComponentReplicatedState` 1528 | todo |
 | 4 | mob names on the grey markers | `PlayerNameTagComponentReplicatedState` 100 | todo |
 | 5 | mounted yes/no | `MountComponentReplicatedState` 5620 | todo |
