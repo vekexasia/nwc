@@ -9,7 +9,10 @@
   #left { flex: 0 0 46%; display: flex; flex-direction: column; border-right: 1px solid #2b2f36; }
   #right { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
   header { padding: 8px 10px; border-bottom: 1px solid #2b2f36; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-  #canvasWrap { flex: 1; position: relative; }
+  #canvasWrap { flex: 1 1 45%; position: relative; min-height: 160px; }
+#mapWrap { flex: 1 1 55%; display: flex; flex-direction: column; border-top: 1px solid #2b2f36; min-height: 200px; }
+#mapBar { padding: 4px 8px; display: flex; gap: 8px; align-items: center; }
+#mapFrame { border: 0; flex: 1; width: 100%; background: #0d0f12; }
   canvas { width: 100%; height: 100%; display: block; }
   table { border-collapse: collapse; width: 100%; }
   th, td { text-align: left; padding: 3px 8px; border-bottom: 1px solid #23272e; white-space: nowrap; }
@@ -33,6 +36,13 @@
     <a id="maplink" class="dim" href="#" target="_blank">community map</a>
   </header>
   <div id="canvasWrap"><canvas id="canvas"></canvas></div>
+  <div id="mapWrap">
+    <div id="mapBar" class="dim">community map
+      <button id="centerMap">center on me</button>
+      <span id="mapNote"></span>
+    </div>
+    <iframe id="mapFrame" title="community map" referrerpolicy="no-referrer"></iframe>
+  </div>
 </div>
 <div id="right">
   <header>
@@ -154,16 +164,27 @@ function render(snapshot) {
   }
   // the server is the source of truth for who "me" is: it persists it, the page does not
   const meInfo = snapshot.me || {};
+  const entityOf = snapshot.entity_of || {};
+  for (const [obj, entity] of Object.entries(entityOf)) {
+    if (entity === meInfo.entity || obj === meInfo.object) selected = entity;
+  }
+  currentMe = objects[selected] || null;
   if (meInfo.object) {
     selected = meInfo.object;
-    document.getElementById("meLabel").textContent =
-      `me: ${meInfo.object.slice(0, 12)}` +
-      (meInfo.method ? ` (${meInfo.method}${meInfo.distance ? `, moved ${meInfo.distance} units` : ""}` +
-        (meInfo.margin_over_next ? `, ${meInfo.margin_over_next}x the next` : "") + ")" : "");
+    const followed = meInfo.followed_from ? ` — followed from ${meInfo.followed_from.slice(0, 10)}` : "";
+    document.getElementById("meLabel").textContent = meInfo.stale
+      ? `me: ${meInfo.object.slice(0, 12)} is stale (${meInfo.position_age_s == null ? "no position since then" : meInfo.position_age_s + "s"}) — press identify me again`
+      : `me: ${meInfo.object.slice(0, 12)}${followed}` +
+        (meInfo.method ? ` (${meInfo.method}${meInfo.distance ? `, moved ${meInfo.distance} units` : ""}` +
+          (meInfo.margin_over_next ? `, ${meInfo.margin_over_next}x the next` : "") + ")" : "");
+    document.getElementById("meLabel").className = meInfo.stale ? "warn" : "dim";
   } else {
     document.getElementById("meLabel").textContent = "me: not identified — press the button and walk";
   }
   const me = objects[selected];
+  // the map must show something even before "me" is calibrated: fall back to the first placed object
+  const fallback = Object.values(objects).find(slot => slot.position);
+  centerOnMe(objects[selected] || objects[meInfo.object] || fallback);
   const link = document.getElementById("maplink");
   if (me && me.position) {
     link.href = `https://aeternum-map.th.gl/?x=${Math.round(me.position.x)}&y=${Math.round(me.position.y)}&zoom=6`;
@@ -181,6 +202,24 @@ function render(snapshot) {
   lastCounters = snapshot.counters;
   draw(objects);
 }
+
+function centerOnMe(slot, force) {
+  const frame = document.getElementById("mapFrame");
+  const note = document.getElementById("mapNote");
+  const target = slot && slot.position ? slot.position
+    : (slot && slot.entity_position ? slot.entity_position : null);
+  if (!target) { note.textContent = "no position yet"; return; }
+  const url = `https://aeternum-map.th.gl/?x=${Math.round(target.x)}&y=${Math.round(target.y)}&zoom=6`;
+  if (force || !frame.dataset.loaded) {
+    frame.src = url;
+    frame.dataset.loaded = "1";
+    note.textContent = "centered on " + Math.round(target.x) + "," + Math.round(target.y);
+  } else {
+    note.textContent = "map is elsewhere — press center on me";
+  }
+}
+document.getElementById("centerMap").onclick = () => centerOnMe(currentMe, true);
+let currentMe = null;
 
 async function poll() {
   try {

@@ -90,17 +90,18 @@ def main(argv=None):
     args = parser.parse_args(argv)
     args.probe = args.probe.resolve()   # _runner resolves relative probes against Tools/nw_capture
 
-    for pid in leftover_servers():
-        print(f"clearing leftover frida-server pid {pid}", flush=True)
-        with contextlib.suppress(ProcessLookupError, PermissionError):
-            os.kill(pid, 9)
-        time.sleep(0.3)
-
     try:
         lock = capture_lock.acquire(args.label, wait=args.wait)
     except capture_lock.CaptureBusy as busy:
         print(f"BLOCKED: {busy}", file=sys.stderr)
         return 1
+
+    # Only with the lock held: a frida-server found now is a leftover, not another capture's server.
+    for pid in leftover_servers():
+        print(f"clearing leftover frida-server pid {pid}", flush=True)
+        with contextlib.suppress(ProcessLookupError, PermissionError):
+            os.kill(pid, 9)
+        time.sleep(0.3)
 
     stale = stale_agent_pids()
     if stale:

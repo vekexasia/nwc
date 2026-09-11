@@ -55,6 +55,7 @@ class LiveState:
         self.lock = threading.Lock()
         self.objects: dict[str, dict] = {}
         self.me: dict = {"object": None, "method": None}
+        self.seen_objects: set[str] = set()
         self.me_path = Path(os.environ.get("NW_LIVE_ME", "/tmp/nwc/nw_live_me.json"))
         if self.me_path.exists():
             try:
@@ -71,10 +72,46 @@ class LiveState:
     def _slot(self, key: str) -> dict:
         return self.objects.setdefault(key, {"object": key})
 
+    def _save_me(self) -> None:
+        try:
+            self.me_path.parent.mkdir(parents=True, exist_ok=True)
+            self.me_path.write_text(json.dumps(self.me))
+        except Exception:
+            pass
+
+    def _follow(self, key: str, position: dict) -> None:
+        """Hand the identification over when the state object is recreated.
+
+        The game rebuilds these state objects, so the calibrated pointer goes stale while the entity
+        stays. The identity fields we have are either per-record bookkeeping or readers shared by
+        dozens of fields, so there is no stable id to key on: this follows the entity by continuity
+        instead, and the page is told when it happens.
+        """
+        me = self.me
+        calibrated = me.get("object")
+        if not calibrated or key == calibrated or key in self.seen_objects:
+            return
+        last = self.objects.get(calibrated) or {}
+        reference = last.get("position")
+        if reference is None or (time.time() - (last.get("position_at") or 0)) < 15:
+            return
+        distance = abs(position["x"] - reference["x"]) + abs(position["y"] - reference["y"])
+        if distance > 12:
+            return
+        me["object"] = key
+        me["followed_from"] = calibrated
+        me["followed_at"] = time.time()
+        me["follow_distance"] = round(distance, 1)
+        self._save_me()
+
     def position(self, key: str, position: dict) -> None:
         if not all(math.isfinite(position.get(k, 0.0)) for k in ("x", "y")):
             return
         with self.lock:
+            self._follow(key, position)
+            self.seen_objects.add(key)
+            if self.me.get("object") == key:
+                self.me["at"] = time.time()
             previous = self._slot(key).get("position")
             self._slot(key).update({"position": position, "position_at": time.time()})
             self.counters["position"] += 1
@@ -102,12 +139,9 @@ class LiveState:
             best = moved[0][0]
             margin = moved[0][1] / moved[1][1] if len(moved) > 1 and moved[1][1] > 1e-6 else None
             self.me = {"object": best, "method": "walk", "distance": round(moved[0][1], 1),
-                       "margin_over_next": None if margin is None else round(margin, 2)}
-            try:
-                self.me_path.parent.mkdir(parents=True, exist_ok=True)
-                self.me_path.write_text(json.dumps(self.me))
-            except Exception:
-                pass
+                       "margin_over_next": None if margin is None else round(margin, 2),
+                       "at": time.time()}
+            self._save_me()
             return dict(self.me)
 
     def calibration_active(self) -> bool:
@@ -137,6 +171,15 @@ class LiveState:
         with self.lock:
             self.counters["skipped"] += 1
 
+    def _me_view(self) -> dict:
+        """The identification plus whether it is still alive, so the page can say so."""
+        me = dict(self.me)
+        slot = self.objects.get(me.get("object") or "")
+        latest = max(slot.get("position_at") or 0, me.get("at") or 0) if slot else (me.get("at") or 0)
+        me["position_age_s"] = None if not latest else round(time.time() - latest, 1)
+        me["stale"] = bool(me.get("object")) and (me["position_age_s"] is None or me["position_age_s"] > 20)
+        return me
+
     def tick(self) -> None:
         with self.lock:
             self.counters["lines"] += 1
@@ -149,7 +192,7 @@ class LiveState:
                 "uptime_s": round(time.time() - self.started, 1),
                 "last_line_age_s": None if self.last_line_at is None else round(time.time() - self.last_line_at, 2),
                 "counters": dict(self.counters),
-                "me": dict(self.me),
+                "me": self._me_view(),
                 # inside the lock already: calibration_active() would take it again
                 "calibrating": self.calibration is not None and time.time() < self.calibration["until"],
                 "objects": {k: v for k, v in sorted(self.objects.items())},
@@ -380,6 +423,24 @@ def self_check() -> int:
         blob = json.dumps(state3.snapshot(), allow_nan=False)      # must not raise
         assert "NaN" not in blob and "Infinity" not in blob, blob
         assert state3.snapshot()["objects"]["0xnan"].get("mana") == 12.5, state3.snapshot()
+
+        # continuity: when the calibrated object goes quiet and another shows up where it was, take over
+        state4 = LiveState()
+        state4.me_path = Path(tmp) / "me4.json"
+        state4.me = {"object": "0xold", "method": "walk", "at": time.time() - 100}
+        state4.position("0xold", {"x": 100.0, "y": 100.0, "elev_raw": 1})
+        state4.objects["0xold"]["position_at"] = time.time() - 60
+        state4.position("0xnew", {"x": 103.0, "y": 101.0, "elev_raw": 1})
+        assert state4.me["object"] == "0xnew", state4.me
+        assert state4.me["followed_from"] == "0xold", state4.me
+        # ...but not to something far away
+        state5 = LiveState()
+        state5.me_path = Path(tmp) / "me5.json"
+        state5.me = {"object": "0xold", "method": "walk", "at": time.time() - 100}
+        state5.position("0xold", {"x": 100.0, "y": 100.0, "elev_raw": 1})
+        state5.objects["0xold"]["position_at"] = time.time() - 60
+        state5.position("0xfar", {"x": 500.0, "y": 500.0, "elev_raw": 1})
+        assert state5.me["object"] == "0xold", state5.me
 
         # when nothing moves the previous identification is kept, and the run says so
         state2.start_calibration(10.0)
