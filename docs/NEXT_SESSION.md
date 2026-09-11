@@ -560,3 +560,18 @@ TurnInPlace / IdlePoseTrans from the CAGE aliases.
 The live server follows Tools/nw_capture/logs on port 8769; start a capture from the page when the
 game is back (`start capture`), then run `nw_rmi_probe.js` once through nw_capture_probe.py for the
 RMI census (it needs its own capture slot: one Frida session at a time).
+
+## Update 2026-09-11 (20:20): the game is back, RMIs and chat
+
+- `nw_join_probe.js` now also emits `rmi_samples`: every typed message that is not a state chunk, with
+  the bytes after the type reference. `decode_rmi.py --log` lists them by catalog name; a 60 s
+  standalone run saw 51 types. Client-facet RMIs start with the 16-byte target uuid.
+- **Chat decoded** (`ReceiveChatMessage` 4118 and the batched 293): sender uuid string, name, six bytes
+  (channel), text, Steam id. Shown above the damage feed. Per-hit damage RMIs (2071, 3601) will land in
+  the same stream the first time the player fights with the probe up.
+- `nw_live.py --auto-capture`: starts the join probe whenever the game runs and no capture holds the
+  lock, so the spawn full states are not missed. The server on 8769 runs with it now.
+- Corrections from the player's eye: level = wire value + 1; riding = Mount state byte 1/5, not "mount
+  id set" (state 4 = mount out, owner on foot, moving at walking speed over 4,995 samples).
+- Trap: stopping the server while its watcher is on can leave a capture it started as an orphan
+  (SIGINT is default in the child: `kill -INT <pid from /tmp/nw-capture.lock>` stops it cleanly).
