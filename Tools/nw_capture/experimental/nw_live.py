@@ -55,7 +55,7 @@ class LiveState:
         self.lock = threading.Lock()
         self.objects: dict[str, dict] = {}
         self.me: dict = {"object": None, "method": None}
-        self.seen_objects: set[str] = set()
+
         self.me_path = Path(os.environ.get("NW_LIVE_ME", "/tmp/nwc/nw_live_me.json"))
         if self.me_path.exists():
             try:
@@ -89,14 +89,16 @@ class LiveState:
         """
         me = self.me
         calibrated = me.get("object")
-        if not calibrated or key == calibrated or key in self.seen_objects:
+        if not calibrated or key == calibrated:
             return
         last = self.objects.get(calibrated) or {}
         reference = last.get("position")
         if reference is None or (time.time() - (last.get("position_at") or 0)) < 15:
-            return
+            return                        # the calibrated object is still talking: keep it
+        # The candidate is talking right now (we are handling its position), and the object may well be
+        # one we have seen before: the game reuses state objects, so "already seen" says nothing.
         distance = abs(position["x"] - reference["x"]) + abs(position["y"] - reference["y"])
-        if distance > 12:
+        if distance > 25:
             return
         me["object"] = key
         me["followed_from"] = calibrated
@@ -109,7 +111,6 @@ class LiveState:
             return
         with self.lock:
             self._follow(key, position)
-            self.seen_objects.add(key)
             if self.me.get("object") == key:
                 self.me["at"] = time.time()
             previous = self._slot(key).get("position")
@@ -177,7 +178,7 @@ class LiveState:
         slot = self.objects.get(me.get("object") or "")
         latest = max(slot.get("position_at") or 0, me.get("at") or 0) if slot else (me.get("at") or 0)
         me["position_age_s"] = None if not latest else round(time.time() - latest, 1)
-        me["stale"] = bool(me.get("object")) and (me["position_age_s"] is None or me["position_age_s"] > 20)
+        me["stale"] = bool(me.get("object")) and (me["position_age_s"] is None or me["position_age_s"] > 45)
         return me
 
     def tick(self) -> None:

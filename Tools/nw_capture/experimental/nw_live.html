@@ -32,6 +32,7 @@
     <span class="dim" id="status">starting</span>
     <span class="dim" id="counters"></span>
     <button id="identify">identify me: walk 3s</button>
+    <label class="dim"><input type="checkbox" id="hideOthers"> hide everything that is not me or a named player</label>
     <span class="dim" id="meLabel">me: not identified</span>
     <a id="maplink" class="dim" href="#" target="_blank">community map</a>
   </header>
@@ -109,16 +110,19 @@ function draw(objects) {
   const scale = Math.min((w - 40) / spanX, (h - 40) / spanY);
   const ox = 20 + (w - 40 - spanX * scale) / 2, oy = h - 20 - (h - 40 - spanY * scale) / 2;
   const toScreen = p => [ox + (p.x - minX) * scale, oy - (p.y - minY) * scale];
+  const hideOthers = document.getElementById("hideOthers").checked;
   for (const [key, trail] of trails) {
     if (trail.length < 1) continue;
     const isMe = key === selected;
-    ctx.strokeStyle = isMe ? "#7cf07c" : "rgba(140,160,190,0.35)";
+    const isPlayer = !!(objects[key] && objects[key].name);
+    if (hideOthers && !isMe && !isPlayer) continue;
+    ctx.strokeStyle = isMe ? "#7cf07c" : (isPlayer ? "rgba(120,170,255,0.6)" : "rgba(140,160,190,0.28)");
     ctx.lineWidth = isMe ? 2.5 : 1;
     ctx.beginPath();
     trail.forEach((p, i) => { const [sx, sy] = toScreen(p); i ? ctx.lineTo(sx, sy) : ctx.moveTo(sx, sy); });
     ctx.stroke();
     const [lx, ly] = toScreen(trail[trail.length - 1]);
-    ctx.fillStyle = isMe ? "#7cf07c" : "rgba(180,200,220,0.6)";
+    ctx.fillStyle = isMe ? "#7cf07c" : (isPlayer ? "rgba(120,170,255,0.8)" : "rgba(180,200,220,0.5)");
     ctx.beginPath(); ctx.arc(lx, ly, isMe ? 4 : 2, 0, Math.PI * 2); ctx.fill();
   }
   const me = objects[selected];
@@ -128,7 +132,9 @@ function draw(objects) {
     ctx.fillText(`${me.name || selected}  x=${me.position.x} y=${me.position.y}`, sx + 8, sy - 8);
   }
   ctx.fillStyle = "#6b7280"; ctx.font = "11px ui-monospace";
-  ctx.fillText(`${Math.round(spanX)} x ${Math.round(spanY)} units  scale ${scale.toFixed(2)} px/unit`, 12, 16);
+  const drawn = [...trails.keys()].filter(k => !hideOthers || k === selected || (objects[k] && objects[k].name)).length;
+  ctx.fillText(`${Math.round(spanX)} x ${Math.round(spanY)} units  scale ${scale.toFixed(2)} px/unit  ` +
+    `trails: you + ${drawn - (trails.has(selected) ? 1 : 0)} others  (grey = mobs and scenery)`, 12, 16);
 }
 
 function render(snapshot) {
