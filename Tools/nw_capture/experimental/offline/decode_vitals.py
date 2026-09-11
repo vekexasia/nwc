@@ -1,10 +1,19 @@
 #!/usr/bin/env python3
 """Read entity health (and the vitals update that carries it) out of a capture.
 
-The Vitals state payload is `[0x01][mask][fields in member order]`, and mask bit 0 is
-`HealthAmount`, a big-endian float32. Verified on a drain capture: the decoded deltas were
-+57.7 and -362.4 on the object that produced the player's own combat text (+57 heal, 362
-damage), which is what identifies the player's entity in a capture.
+The Vitals payload carries one `[member mask][field mask][fields]` block per member that changed,
+in the state's member order, and member 0 is `HealthAmount` (`+0x7c0`). Its field mask bit 0 is the
+**big-endian float32** current health, which is what this reads:
+
+```
+01 01 46 1b 88 f3      member 0 present, field bit 0: health 9954.2
+01 09 46 17 75 cb 03   member 0, field bits 0 and 3: health plus one byte
+```
+
+Verified on a drain capture: the decoded deltas were +57.7 and -362.4 on the object that produced
+the player's own combat text (+57 heal, 362 damage), which is what identifies the player's entity in
+a capture. Reproduced on a second capture (a -362.4 drop inside the drain window, +57.7 and +43.9
+between drops).
 
     .venv-capture/bin/python Tools/nw_capture/experimental/offline/decode_vitals.py \
         --log Tools/nw_capture/logs/<run>_drain.log --object 0x3d5bac00
@@ -20,7 +29,8 @@ import struct
 from pathlib import Path
 
 TAG = "Vitals-stage-90-mask"
-MASK_HEALTH = 0x01
+MEMBER_HEALTH = 0x01   # member mask: member 0 (HealthAmount) is present
+FIELD_HEALTH = 0x01    # its field mask: bit 0 is the float32
 
 
 def samples(log_path: Path, per_object: bool = True):
@@ -38,7 +48,7 @@ def samples(log_path: Path, per_object: bool = True):
             if not payload_hex:
                 continue
             payload = bytes.fromhex(payload_hex)
-            if len(payload) < 6 or payload[0] != 0x01 or not payload[1] & MASK_HEALTH:
+            if len(payload) < 6 or not payload[0] & MEMBER_HEALTH or not payload[1] & FIELD_HEALTH:
                 continue
             health = struct.unpack(">f", payload[2:6])[0]
             if per_object:

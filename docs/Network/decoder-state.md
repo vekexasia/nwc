@@ -43,15 +43,19 @@ Where the numbers come from: `worldPosAbs` = two big-endian float32 then a quant
 
 ## Health: decoded from the traffic and validated against the game's own numbers
 
-**The health is readable.** The Vitals payload is **one mask per member, in the state's member
-order** (`0x17b4110` reads a mask byte, then the fields of each set bit, then moves to the next
-member). Mask bit 0 of **member 0** is `HealthAmount` and the field is a **big-endian float32**.
-What earlier notes called the payload's opcode byte was member 0's mask: `01 01 <f32>` is member 0
-with mask `0x01`, `01 09 <f32> <1B>` is member 0 with mask `0x09` (bits 0 and 3).
-player's own health with the right mouse button: the decoded deltas on that object were **+57.7**
-and **-362.4**, exactly the `+57` heal and `362` damage the game printed on screen, and the same
-capture shows other entities on their own tick patterns (+43.9/+57.7 regeneration, -318.5 for a
-second entity hit by the same ability). Read it with
+**The health is readable.** The Vitals payload is one `[member mask][field mask][fields]` block per
+member that changed, in the state's member order: the reader `0x17b4110` reads a member mask, then
+that member's own field mask, consumes the fields of each set bit, and moves to the next member. So
+member 0 (`+0x7c0`, `HealthAmount`) always leads: `01 01 <f32>` is member 0 present with field bit 0
+(the float32), and `01 09 <f32> <1B>` is member 0 with field bits 0 and 3. What earlier notes called
+the payload's opcode byte was member 0's member mask.
+
+Verified by draining the player's own health with the right mouse button: the decoded deltas on that
+object were **+57.7** and **-362.4**, exactly the `+57` heal and `362` damage the game printed on
+screen, and the same capture shows other entities on their own tick patterns (+43.9/+57.7
+regeneration, -318.5 for a second entity hit by the same ability). Reproduced on a second capture:
+five `-362.4` drops inside the `drain_start`/`drain_end` window of `nw_actions.py`, with +57.7 and
++43.9 between them, then steady regeneration. Read it with
 `Tools/nw_capture/experimental/offline/decode_vitals.py --log <log> [--object <addr>]` (self-check:
 `--check`); the log comes from `nw_state_probe.js`, which records the object, the consumed bytes and
 the payload for each Vitals read.

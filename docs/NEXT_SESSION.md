@@ -195,3 +195,52 @@ Current next technical step, replacing the one above:
 2. Attribute samples to an entity (record context, not proximity) so the trail is continuous and
    the `worldPosRel` delta scale can be fitted against the absolute anchors.
 3. Only then the live map and trail.
+
+## Update 2026-09-11: the player's health is decoded from the traffic
+
+The Vitals state (typeIndex 15) is no longer a static table only: the payload model and the value are
+verified against the game's own numbers.
+
+What is verified:
+
+- The payload has **no opcode**. For each member that changed, in the state's member order, the reader
+  `0x17b4110` reads `[member mask][field mask][fields]`, consumes the fields of every set bit, then
+  moves to the next member. `01 01 <f32>` is member 0 with field bit 0; `01 09 <f32> <1B>` is member 0
+  with field bits 0 and 3.
+- Member 0 is `+0x7c0` (`HealthAmount`) and its field bit 0 is a **big-endian float32**. Draining the
+  player's own health with the right mouse button produced deltas of exactly **+57.7** and **-362.4**,
+  the `+57` heal and `362` damage the game printed on screen.
+- The member order is the registration order in `FUN_14671E040`: 0 `+0x7c0`, 1 `+0x7e8`, 2 `+0x810`,
+  then `replicatedAfflictionsHotData` `+0x970`, `replicatedAfflictionsColdData` `+0xc18`, `vitalsData`
+  `+0xec0`, `healthChangeFlags` `+0x928`, six unnamed `0x28`-byte structures at `+0x838`..`+0x900`, and
+  `vitalsId`, `vitalsCategoryId`, `vitalsLevel`, `invulnerability`, `displayImmuneWhenInvulnerable`,
+  `maxHealth`.
+- Reproduced on a second, independent capture: five `-362.4` drops inside the `drain_start`/`drain_end`
+  window, with +57.7 and +43.9 between them, then steady regeneration. An 85-second capture gave 3140
+  Vitals payloads over 121 objects, which is enough for a tailing live readout.
+
+Still open: the field mask bits of member 0 other than bit 0 and of every member after member 0 (that
+is what stamina and mana need), how the non-health amounts encode their value (a sprint-correlated
+payload is not a plain float32), the reader's delta stage (varint plus member vtable `+0x50`), and
+attribution of an object to the local player without the combat text, since the object pointer changes
+on every launch.
+
+Reproduce, from `~/git/personale/new-world-capture`:
+
+```sh
+# capture (no focus, no input) while the state is read; the probe records object, bytes and payload
+.venv-capture/bin/python Tools/nw_capture/experimental/nw_capture_probe.py \
+    --probe "$PWD/Tools/nw_capture/experimental/nw_state_probe.js" --seconds 85 --label vitals3
+# in parallel, a timed action sequence (this part takes the focus and restores it)
+.venv-capture/bin/python Tools/nw_capture/experimental/nw_actions.py
+# read the health out of the log; --check runs the self-check
+.venv-capture/bin/python Tools/nw_capture/experimental/offline/decode_vitals.py \
+    --log Tools/nw_capture/logs/<run>_vitals3.log --object <addr>
+```
+
+Reading order for this part: `docs/Network/decoder-state.md` (the health section),
+`health-field.md` (the 19-member static table), `replicated-state-todo.md` (the per-state TODO and the
+working loop).
+
+Current next technical step: the field mask bits of members 1..18, member by member, starting from
+stamina and mana, because sprint and cast payloads are already in the captures above.

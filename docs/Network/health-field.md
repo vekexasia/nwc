@@ -23,8 +23,9 @@ marshal/unmarshal handler rather than the ALC `FUN_142a35db0` schema builder, bu
 constructor still builds a group-aware replicated field table. `FUN_14671E040` registers the
 fields through `FUN_141775C60`; the member codecs are initialized with descriptor objects, and
 `qword(descriptor + 0x30)` is the field reader used by the custom unmarshal path. The table and
-widths below are now recovered statically. A live type-15 payload is still needed to validate the
-field ordering and values in a capture.
+widths below are recovered statically, and the live payload model is now confirmed: see
+[decoder-state.md](decoder-state.md) for the member order, the two-level mask and the value that was
+validated against the game's own numbers.
 
 ## Type identity evidence
 
@@ -166,16 +167,17 @@ if (*(char *)(param_2 + 1) == '\0') {
 }
 ```
 
-`FUN_1417B4110` reads one or more mask bytes, then `FUN_1417B43C0` walks the selected
-fields in each 800-byte group. The latter calls the codec object's vtable at `+0x30`;
-this is why the descriptor readers in the table are part of the custom network path, not
-just an unrelated reflection table. The mask and container framing add bytes beyond each
-field width.
+`FUN_1417B4110` walks the state's 800-byte member groups in order and reads one **member mask** per
+group, then that group's own **field mask**, then the fields of each set bit; `FUN_1417B43C0` is what
+runs a selected member's codec, calling its vtable at `+0x30`. This is why the descriptor readers
+in the table are part of the custom network path, not just an unrelated reflection table. Member 0 is
+`+0x7c0` (`HealthAmount`) and the group order is the registration order of `FUN_14671E040`.
 
 The held historical ledger `/tmp/nwc/B-ledger.bin` contains only record type `0x0B`
 (`ALCReplicatedState`) in the tested channel-1 stream. It contains no observed type
-`0x0F` record, so these static readers have not been validated against a live Vitals payload.
-
+`0x0F` record, so the ledger route cannot validate these readers. The validation came from the probe
+hook on the reader path instead: `nw_state_probe.js` records the payload of every Vitals read, and
+member 0's field bit 0 reproduces the player's own health (see [decoder-state.md](decoder-state.md)).
 To recognize one in a future channel-1 capture, consume the record envelope first:
 `[V1 varint][0x01][V2 varint][TYPE varint][group mask][payload]`, then select records whose
 `TYPE == 15` (encoded as the single byte `0x0f` in this build). A raw `01 01 ... 0f` byte
@@ -199,6 +201,11 @@ mask and selected field masks then determine which table readers run.
   optional-structure readers are variable or conditional as marked.
 - The local `VitalsStatData` layout has `m_amount` at `+0x08` and `m_max` at `+0x0C`.
 - The held ledger's observed record type histogram has no type `0x0F` record.
+- A live type-15 payload is captured and decoded: the member order is the registration order of
+  `FUN_14671E040`, member 0 is `+0x7c0`, and its field mask bit 0 is a big-endian float32 that
+  reproduces the player's own health against the game's combat text.
+- Live payload examples: `01 01 46 1b 88 f3` (member 0, field bit 0: 9954.2) and
+  `01 09 46 17 75 cb 03` (member 0, field bits 0 and 3: the same health plus one byte).
 
 ### Inferred
 
@@ -209,16 +216,17 @@ mask and selected field masks then determine which table readers run.
 - `HealthTickRate` is the closest registered counterpart to the unreferenced
   `HealthRegen` string; its half-width codec suggests a distinct rate representation.
 - A future Vitals record, if emitted in the same registry framing, would use the
-  varint type index `15` (`0x0F` as a one-byte value). This has not been observed here.
+  varint type index `15` (`0x0F` as a one-byte value). Confirmed live: the reader hook sees type-15
+  payloads continuously (3140 of them in an 85-second capture, over 121 objects).
 
 ### Could not establish
 
-- The exact group/property order and mask bits in a live type-15 payload.
+- The field mask bits of member 0 other than bit 0, and of every member after member 0.
 - Whether the lower-case `maxHealth` field at `+0x1000` is the network max-health
   value, a derived aggregate, or a separate gameplay/UI value.
-- Whether the 4-byte amount/max codecs represent floats directly or apply quantization
-  or another transform after their raw-width read.
-- A live payload example for `MB::VitalsComponentReplicatedState`.
+- Whether the non-health amount codecs represent floats directly or apply quantization or another
+  transform after their raw-width read. Member 0's bit 0 **is** a plain big-endian float32, but a
+  payload correlated with sprint does not decode as one, so at least one of them does not.
 
 ## Exact commands
 

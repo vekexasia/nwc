@@ -39,7 +39,7 @@ address our own static analysis names `FUN_142a327f0`
 | State | typeIndex | Status in this repo |
 |---|---:|---|
 | `ALCReplicatedState` | 11 | Decoded and verified: group-aware record payload, 1..9-byte mask reader, 48-property schema, `worldPosAbs`/`worldPosRel`, axis assignment cross-checked against 55739 community markers ([alc-protocol-reference.md](alc-protocol-reference.md), [decoder-state.md](decoder-state.md)) |
-| `VitalsComponentReplicatedState` | 15 | **Health decoded from live payloads and validated** against the game's own numbers; the payload carries several opcodes with their own masks, so the remaining fields are mapped one opcode at a time ([decoder-state.md](decoder-state.md), [health-field.md](health-field.md)) |
+| `VitalsComponentReplicatedState` | 15 | **Health decoded from live payloads and validated** against the game's own numbers; the payload is one `[member mask][field mask][fields]` block per member in the state's order, so the remaining fields are mapped member by member ([decoder-state.md](decoder-state.md), [health-field.md](health-field.md)) |
 | `PlayerComponentReplicatedState` | 3935 | Registry identity and one community reference body, no field map of our own. See below |
 | everything else | - | Not started |
 
@@ -49,20 +49,21 @@ semantics of the ~14 unobserved fields ([decoder-state.md](decoder-state.md)).
 
 ### Vitals: what is decoded, and what the payload looks like
 
-The payload is **one mask per member, in the state's member order**, not one opcode per payload:
-the reader `0x17b4110` reads a mask byte, consumes the fields of each set bit, then moves to the
-next member of the state's descriptor vector. So the leading byte of an observed payload is member
-0's mask. **Member 0 (`+0x7c0`, `HealthAmount`), mask bit 0, is a big-endian float32**, and the
+The payload is one `[member mask][field mask][fields]` block per member that changed, in the
+state's member order, not one opcode per payload: the reader `0x17b4110` reads a member mask, then
+that member's own field mask, consumes the fields of each set bit, then moves to the next member of
+the state's descriptor vector. So the leading byte of an observed payload is member 0's member mask.
+**Member 0 (`+0x7c0`, `HealthAmount`), field bit 0, is a big-endian float32**, and the
 decoded deltas match what the game prints on screen (a `+57` heal, a `362` drain, a right-mouse drain
 falling in 260.8 steps). Read it with
 `Tools/nw_capture/experimental/offline/decode_vitals.py --log <log> [--object <addr>]` (self-check:
 `--check`).
 
 ```text
-01 01 46 1b 88 f3      member 0, mask 01: health 9954.2
-01 09 46 17 75 cb 03   member 0, mask 09: health + one 1-byte field
-08 02 01 00 08 37 ...  member 0, mask 08 (one byte), then member 1 mask 01 ...
-02 01 01 01 02 40 ...  member 0 mask 02, then member 1 mask 01, ...
+01 01 46 1b 88 f3      member 0, field bit 0: health 9954.2
+01 09 46 17 75 cb 03   member 0, field bits 0 and 3: health + one 1-byte field
+08 02 ...              member 0 with field mask 08, then further members (not mapped)
+02 01 ...              member 0 with field mask 02 (bit 0 clear: not the health field)
 ```
 
 The member order is the order of the registration calls in the object builder `FUN_14671E040`:
@@ -202,7 +203,7 @@ The path already walked for ALC, reuse it instead of re-deriving ([alc-static-an
 4. Confirm the whole member consumes exactly, inside the bundle, before naming anything as a value.
 
 Then hook the client-side reader (see "How a state is read now") and validate each field by driving
-an action, because the property table alone does not say which bit or opcode carries which field.
+an action, because the property table alone does not say which member and which mask bit carry a field.
 
 Before decoding a state, check the capture actually contains it: our Test teleport ledger resolves
 only type reference 11, so a new state needs a capture where its `typeIndex` is present
