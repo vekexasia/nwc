@@ -702,9 +702,12 @@ def apply_line(line: str, state: LiveState) -> None:
                 # a player killer carries the character name, then 24 + the uuid string (OPR 21:58, "quaateme")
                 if index < len(raw) and raw[index] == 0x24:
                     index += 37
-                if index + 14 <= len(raw):
+                # then zero bytes (six after a mob key, five after a player uuid) and two f32
+                while index < len(raw) and raw[index] == 0:
+                    index += 1
+                if index + 8 <= len(raw):
                     killer = loc_text(raw[1:1 + length].decode("ascii", "replace"))
-                    last_hit, health_max = struct.unpack(">ff", raw[index + 6:index + 14])
+                    last_hit, health_max = struct.unpack(">ff", raw[index:index + 8])
                     state.hit({"key": "death", "name": f"killed by {killer}", "delta": -round(last_hit),
                                "types": [f"max {health_max:.0f}"]})
             elif item[1] == 3601:
