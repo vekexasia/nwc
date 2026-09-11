@@ -40,6 +40,8 @@ time -> first frame with the new state (the hook stamps arrive 0.1-0.15 s after 
 | L0 | `0x0a` (10) | light / heavy attack with the weapon held at 14:37 (player's own observation on the live page) | live3 14:38:26 |
 | L0 | `0x08` (8) | ability use with that same weapon (player's observation) | live3 14:36:58 - 14:38:24 |
 | L0 stance | `group0.bit43` = `0x89` / `0x49` / `0x09` | crouched / prone / standing; crouch and prone are sequences inside idle (`bf36` -> `bc3b`, `822f` -> `aa3f`, back to `a33f`), the byte is what the viewer reads | live3 14:40:45 - 14:40:56 (player's own crouch and prone) |
+| L0 | `0x09` (9) | gathering (harvesting animation; the player read it off another player chopping a tree) | live3 14:49 on e19, 85 transitions on 5 players |
+| L1 | `0x29` (41) | fishing (the player's own cast at 14:52:34) | live3 14:52:34 on e1 |
 | L0 | `0x18` (24) | unnamed, the most frequent unknown: 1287 transitions on 17 players, speed 0, mostly mounted | census live3 |
 | L1 | `0x2c` (44) | `1` pressed: weapon draw, sequence `0x881d`, 0.7 s | poseA 11:47:16.2 (key 16.05) |
 | L1 | `0x2d` (45) | weapon ready; re-entered with sequence 0 and a new `slayerStateIdStarted` on each cast (`q`, `r`) and after every attack | poseA 11:47:16.9, actions2 08:22:39.2 / 42.2, alchit, poseB |
