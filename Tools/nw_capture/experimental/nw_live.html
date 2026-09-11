@@ -263,7 +263,7 @@ function draw() {
       ctx.beginPath(); ctx.arc(lx, ly, 9 * r, 0, Math.PI * 2); ctx.stroke();
     }
     const slot = objects[key] || {}, kindName = (slot.vitals_ids || [])[0] || (slot.static && slot.gatherable ? "node" : null);
-    const name = k === "me" ? (slot.name || "you") : (k === "animal" && slot.name ? `${slot.name}'s companion` : (slot.name || (kindName && view.scale >= 0.5 ? kindName : null)));
+    const name = k === "me" ? (slot.name || "you") : (k === "animal" && slot.name ? `${slot.name}'s ${(slot.vitals_ids || [])[0] || "companion"}` : (slot.name || (kindName && view.scale >= 0.5 ? kindName : null)));
     const pose = poseText(slot);
     if (name && (k === "me" || view.scale >= 0.3)) labels.push([lx, ly, pose ? `${name} · ${pose}` : name, k]);
   }
@@ -442,7 +442,7 @@ function render(snapshot) {
   $("rows").innerHTML = rows.map(([key, slot]) => {
     const age = Math.max(slot.position_at || 0, slot.vitals_at || 0), p = slot.position || {};
     const cls = (key === selected ? "me" : (slot.npc && slot.name ? "animal" : (slot.name ? "named" : ""))) + (key === focused ? " focused" : "") + (stale(key) ? " stale" : "");
-    return `<tr class="${cls}" data-key="${key}"><td>${key}</td><td title="${(slot.weapons || []).join(", ")}">${slot.name ? (slot.npc ? `<span class="dim">${slot.name}'s companion</span>` : slot.name) : `<span class="dim">${(slot.vitals_ids || [])[0] || "?"}</span>`}${slot.level ? ` <span class="dim">${slot.level}</span>` : ""}</td><td class="dim">${poseText(slot)}</td>` +
+    return `<tr class="${cls}" data-key="${key}"><td>${key}</td><td title="${(slot.weapons || []).join(", ")}">${slot.name ? (slot.npc ? `<span class="dim">${slot.name}'s ${(slot.vitals_ids || [])[0] || "companion"}</span>` : slot.name) : `<span class="dim">${(slot.vitals_ids || [])[0] || "?"}</span>`}${slot.level ? ` <span class="dim">${slot.level}</span>` : ""}</td><td class="dim">${poseText(slot)}</td>` +
       `<td class="num">${slot.health ?? "-"}</td><td class="num">${p.x ?? "-"}</td><td class="num">${p.y ?? "-"}</td>` +
       `<td class="num">${age ? (now - age).toFixed(0) + "s" : "-"}</td></tr>`;
   }).join("");
