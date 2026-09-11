@@ -11,6 +11,8 @@ player's own entity ends in the same 8 bytes (`31df13d046e908f8` on 2026-09-11).
 | 293 | ChatComponentClientFacet_ReceiveBatchedChatMessages | u8 count, then the same records |
 | 3601 | VitalsComponentClientFacet_OnDamage | receiver id u64, flags u16, damage / receiver max health f32, hit position xyz f32, u8 count, count x (damage type u8, amount f32, f32 unread) |
 | 2071 | DamageReceiverComponentClientFacet_OnDamageDealt | source id u64 byte-reversed, target id u64, source id, attack id u64 (zero on damage-over-time ticks, 1 s apart), flags u16, u8 count, entries as above |
+| 4299 | VitalsComponentClientFacet_ClientSyncDeathRecap | u8 length, the killer's vitals name key (`@Invasion_Spearman_VitalsName`, English through the name book's display column), u32, u16, f32 last hit (257.0), f32 the player's max health (9237.0), then 1.0 multipliers |
+| 2415 / 3916 | AITargetableComponentClientFacet_OnSelectedAsTarget / OnUnSelectedAsTarget | the u64 id of the mob that starts / stops targeting the player; the page lists them as "targeted by", named when the id was bound by a dealt hit |
 | 2570 | ActionListComponentClientFacet_OnServerSpreadshotProcessed | pellet records (blunderbuss) |
 | 1628 | PlayerManagerSelfIdentificationMsg | direct message: 05, the player's character uuid (16 bytes, the same uuid the chat sender string carries), more ids; the live page names e1 from a chat line sent by this uuid |
 | 4140 | SocialComponentClientFacet_PlayerDataResponse | 16 bytes, 01, uuid string, name string, then level and flags (inspected players) |

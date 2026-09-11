@@ -397,11 +397,12 @@ function render(snapshot) {
     }
     const feed = (snapshot.feed || []).slice(-10).reverse(), chat = (snapshot.chat || []).slice(-6).reverse();
     const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-    $("feed").innerHTML = (chat.length ? chat.map(c =>
+    const targeted = snapshot.targeted_by || [];
+    $("feed").innerHTML = (targeted.length ? `<div class="chat"><span><b>targeted by</b> ${targeted.map(esc).join(", ")}</span></div>` : "") + (chat.length ? chat.map(c =>
       `<div class="chat"><span><b>${esc(c.name)}</b> ${esc(c.text)}</span><span class="dim">${Math.max(0, snapshot.now - c.at).toFixed(0)}s</span></div>`).join("") + "<hr>" : "") +
       (feed.length ? feed.map(f => {
         const who = f.key === selected ? "you" : (f.key === "dealt" ? `you hit ${f.target_name || "?"}` : (f.name || f.key)), age = Math.max(0, snapshot.now - f.at);
-        const kind = f.key === "dealt" ? "dealt" : (f.delta < 0 ? "hit" : "heal"), types = f.types ? ` <span class="dim">${f.types.join("+")}${f.dot ? " dot" : ""}</span>` : "";
+        const kind = f.key === "dealt" ? "dealt" : (f.key === "death" ? "hit" : (f.delta < 0 ? "hit" : "heal")), types = f.types ? ` <span class="dim">${f.types.join("+")}${f.dot ? " dot" : ""}</span>` : "";
         return `<div><span>${esc(who)}${types}</span><b class="${kind}">${f.delta > 0 ? "+" : ""}${f.delta}</b><span class="dim">${age.toFixed(0)}s</span></div>`;
       }).join("") : '<span class="dim">damage feed: no health change yet</span>');
     const age = snapshot.last_line_age_s, status = $("statusText"), cap = snapshot.capture || {};

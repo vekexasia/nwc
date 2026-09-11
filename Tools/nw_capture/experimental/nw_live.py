@@ -85,6 +85,16 @@ def text_of(identifier: str) -> str:
     return entry["text"] if entry and entry.get("text") else identifier
 
 
+@functools.lru_cache(maxsize=None)
+def _loc_index() -> dict:
+    return {e["display"].lower(): e["text"] for e in NAMES.values() if e.get("display") and e.get("text")}
+
+
+def loc_text(key: str) -> str:
+    """English text of a localization key such as '@Invasion_Spearman_VitalsName' (the death recap)."""
+    return _loc_index().get(key.lower(), key.lstrip("@"))
+
+
 def decode_abs(payload_hex: str):
     """worldPosAbs: two big-endian float32 then a quantised u16 elevation in [-100, 1000]."""
     raw = bytes.fromhex(payload_hex)
@@ -108,6 +118,7 @@ class LiveState:
         self.me: dict = {"object": None, "method": None}
         self.self_uuid: str | None = None   # PlayerManagerSelfIdentificationMsg: the character uuid
         self.net_ids: dict[str, str] = {}   # OnDamageDealt target id (u64 hex) -> entity key, learned from health deltas
+        self.targeted_by: dict[str, float] = {}   # AITargetable OnSelectedAsTarget ids (u64 hex) -> at
         self.pending_dealt: list[tuple[float, float, str]] = []   # (at, amount, target id) awaiting a matching delta
 
         self.history: dict[str, list[tuple[float, float, float]]] = {}
@@ -387,6 +398,13 @@ class LiveState:
                 self.pending_dealt.append((time.time(), -entry["delta"], entry["target"]))
                 del self.pending_dealt[:-20]
 
+    def targeted(self, net_id: str, selected: bool) -> None:
+        with self.lock:
+            if selected:
+                self.targeted_by[net_id] = time.time()
+            else:
+                self.targeted_by.pop(net_id, None)
+
     def _with_target(self, entry: dict) -> dict:
         key = self.net_ids.get(entry.get("target", ""))
         if key is None:
@@ -522,6 +540,7 @@ class LiveState:
                 "objects": {k: v for k, v in sorted(self.objects.items())},
                 "feed": [self._with_target(f) for f in self.feed[-30:]],
                 "chat": self.chat_log[-30:],
+                "targeted_by": [self._with_target({"target": t})["target_name"] if t in self.net_ids else "?" for t in self.targeted_by],
             }
 
 
@@ -634,6 +653,17 @@ def apply_line(line: str, state: LiveState) -> None:
                     state.chat(message)
             elif item[1] == 1628 and len(item[2]) >= 34:
                 state.self_uuid = str(uuid.UUID(hex=item[2][2:34]))
+            elif item[1] in (2415, 3916) and len(item[2]) >= 48:
+                state.targeted(item[2][32:48], item[1] == 2415)
+            elif item[1] == 4299 and len(item[2]) >= 36:
+                # ClientSyncDeathRecap: u8 length, the killer's vitals name key, u32, u16, f32 last hit, f32 max health
+                raw = bytes.fromhex(item[2])[16:]
+                length = raw[0]
+                if 1 + length + 14 <= len(raw):
+                    killer = loc_text(raw[1:1 + length].decode("ascii", "replace"))
+                    last_hit, health_max = struct.unpack(">ff", raw[1 + length + 6:1 + length + 14])
+                    state.hit({"key": "death", "name": f"killed by {killer}", "delta": -round(last_hit),
+                               "types": [f"max {health_max:.0f}"]})
             elif item[1] == 3601:
                 taken = parse_damage_taken(bytes.fromhex(item[2]))
                 if taken:
@@ -998,6 +1028,12 @@ def self_check() -> int:
             "515ac85acc363edc31df13d046e908f82433643331383031302d623431362d346230622d386266372d366565323532313836643664"
             "085065746157617474020000000000046369616f00000000000000000000011137363536313139393532323337343831380103"]]}), state17)
         assert state17.objects["e1"]["name"] == "PetaWatt", state17.objects.get("e1")
+        apply_line(json.dumps({"type": "rmi_samples", "items": [[5, 2415, "83e6e5da016686d031df13d046e908f8990779b848b78ee4"], [6, 4299,
+            "fc65cc3aebb909fc31df13d046e908f81d40496e766173696f6e5f53706561726d616e5f566974616c734e616d6500000000000043808000461054000000003f800000"]]}), state17)
+        assert state17.snapshot()["targeted_by"] == ["e120"], state17.snapshot()["targeted_by"]
+        assert state17.feed[-1]["delta"] == -257 and state17.feed[-1]["name"].startswith("killed by "), state17.feed[-1]
+        apply_line(json.dumps({"type": "rmi_samples", "items": [[7, 3916, "83e6e5da016686d031df13d046e908f8990779b848b78ee4"]]}), state17)
+        assert state17.snapshot()["targeted_by"] == []
 
         # every health change is a feed entry with its delta
         state14 = LiveState()
