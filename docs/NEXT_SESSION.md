@@ -248,9 +248,14 @@ with a corrected action sequence (spells on Q, R and F) gave member 1 as a float
 casts from full, but the spells produced no update of their own, and nothing fell while sprinting.
 That is **not** an input problem: injected keyboard input does reach the game. Injecting `m` through
 the same uinput device that the action sequence uses opens the map, which is visible in a `grim`
-screenshot of the game window before and after. The likely cause is the game state: the character was
-standing in a settlement, where spells cannot be cast, so nothing consumed mana. Redo the capture in
-the open world.
+screenshot of the game window before and after. Spells also work inside a settlement: the player
+watched the **mana** bar fall when Q, R and F were pressed, and member 1 of the Vitals payload reads
+`64.10` right after - three casts from full at about 12 each. So **member 1 (`+0x7e8`), field bit 0, is
+mana**, confirmed, in a float32 `[0, 100]` that refills to 100 within two seconds.
+
+Stamina then is the one still missing, and the sprint is what is in doubt: the injected `w` plus
+`shift` drained nothing, and no object that can be tied to the player moved during the sprint window.
+The movement keys are the thing to check next, the same way the spell keys were wrong before.
 
 Also to re-check: the earlier captures interpreted the health drops as the player's own right-mouse
 drain. If the character was in a settlement then too, the ability cannot have fired, and the drops

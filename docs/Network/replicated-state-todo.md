@@ -80,14 +80,16 @@ The member order is the order of the registration calls in the object builder `F
 | 7-12 | `+0x838`..`+0x900` | six unnamed `0x28`-byte structures |
 | 13-18 | `+0xf48`..`+0x1000` | `vitalsId`, `vitalsCategoryId`, `vitalsLevel`, `invulnerability`, `displayImmuneWhenInvulnerable`, `maxHealth` |
 
-Member 1, field bit 0, is a float32 in `[0, 100]` (64.10 right before the drain, refilled to 100.0
-within two seconds): mana is the obvious reading, but not proven.
+**Member 1 (`+0x7e8`), field bit 0, is mana**: a float32 in `[0, 100]` reading `64.10` right after the
+three spells and refilling to `100.0` within two seconds, confirmed by the player watching the mana
+bar fall during the same sequence. (The static table names this member `StaminaAmount`; the behaviour
+says mana.)
 
-Still open: the bits and widths of the other members, stamina in particular (a capture with the
-sprint phase showed no resource falling while sprinting and no member-1 update from the spells, and
-the character was standing in a settlement, where spells cannot be cast - injected keyboard input
-itself is verified working, see [NEXT_SESSION.md](../NEXT_SESSION.md)), how the non-health amounts
-encode their value, and the reader's third stage (a delta list, varint plus member vtable `+0x50`).
+Still open: the bits and widths of the other members, and stamina in particular - an injected `w` plus
+`shift` drained nothing and moved no object that can be tied to the player, so the sprint itself is in
+doubt (the movement keys are unverified, exactly as the spell keys were wrong before). Also open: how
+the non-health amounts encode their value, and the reader's third stage (a delta list, varint plus
+member vtable `+0x50`).
 
 ### PlayerComponentReplicatedState: what we have
 

@@ -84,11 +84,12 @@ Caution on the mechanism: the earlier note that the right mouse button drained t
 health is an interpretation, not evidence. What is verified is that the decoded deltas matched the
 numbers on screen; which effect caused them is not established.
 
-Member 1, field bit 0, is a **float32 in `[0, 100]`** (not the health scale): on the capture above it
-reads `64.10` in the 40 ms before the drain starts and refills to `100.0` within two seconds. Three
-spells cast from full with a cost of ~12 each would land exactly there, so mana is the obvious reading
-- but the spells themselves produced no member-1 update in that capture, so this is indicated, not
-proven.
+Member 1 (`+0x7e8`), field bit 0, is the **mana**: a float32 in `[0, 100]` that reads `64.10` right
+after the three spells and refills to `100.0` within two seconds. The player watched the mana bar fall
+when the spells were cast, and three casts from full at a cost of about 12 each land exactly on
+`64.10`. Note that the static table in [health-field.md](health-field.md) names this member
+`StaminaAmount`; the observed behaviour says mana, which is a naming conflict still to resolve against
+the descriptor, not a decoding question.
 
 Still open: the bits and widths of every member other than 0, and how the amount members other than
 `HealthAmount` encode their value (the sprint-correlated payload does **not** decode as a plain
