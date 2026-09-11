@@ -64,9 +64,10 @@ FactionComponent 3152: member 2 bit 0 u8 = faction id; `javelindata_factiondata`
 carry `FactionIntro_Syndicate/Marauders/Covenant_Recruitment`, so 1 Syndicate, 2 Marauders, 3 Covenant.
 AttributeComponent 129: `01 0f`, then five (points u32, id u32) pairs, ids 4..0, then a u8 (5..7 seen).
 There is no count: read as count + (id, points) the fifth value fell on a varint and STR came out as 7
-or worse; on 50 records of the player the pairs read 5, 5, 225, 5, 5 on ids 4..0. With the attribute
-sheets ordered STR, DEX, INT, FOC, CON the 225 is on id 2 (INT); the id-to-attribute order is still
-the datasheet order, not proven by the wire (ask the player which attribute holds 225).
+or worse; on 50 records of the player the pairs read 5, 5, 225, 5, 5 on ids 4..0. The player's
+attribute sheet (21:20) shows DEX 362 and INT 116 with gear, so id 2 = DEX and the values are the
+allocated points (gear adds the rest). The other four ids all read 5 and are shown as `attr<n>` until
+one of them moves; the datasheet order STR, DEX, INT, FOC, CON does not put DEX at 2.
 ManaComponent 1652 and StaminaComponent 4297 share one shape: six f32 BE in bit order (amount, max,
 winded countdown, regen delay, two multipliers).
 StatMultiplierTable 1525: `06 07`, then (u16 stat id, u32 basis points) entries, 10000 = 1.0x; a

@@ -618,12 +618,13 @@ def apply_line(line: str, state: LiveState) -> None:
                 # AttributeComponent full state: five (points u32, id u32) pairs, ids 4..0, then a u8.
                 # There is no count: read as count + (id, value) the fifth value fell on a varint and
                 # STR came out as 7 or garbage (50 records of the player: 5, 5, 225, 5, 5 on ids 4..0).
-                # Id order STR, DEX, INT, FOC, CON as in the attribute datasheets; the 225 sits on id 2.
+                # The 225 sits on id 2 and the player's sheet shows DEX 362 / INT 116 (gear included), so
+                # id 2 = DEX. The other four all read 5 and their names are not proven: shown by id.
                 raw = bytes.fromhex(item[6])
                 pairs = [struct.unpack_from("<II", raw, 2 + 8 * i) for i in range(5)]
                 if [i for _, i in pairs] == [4, 3, 2, 1, 0]:
-                    names = ("STR", "DEX", "INT", "FOC", "CON")
-                    state.info(f"e{item[1]}", attributes={names[i]: v for v, i in pairs})
+                    names = {2: "DEX"}
+                    state.info(f"e{item[1]}", attributes={names.get(i, f"attr{i}"): v for v, i in pairs})
             elif item[3] == 13 and item[5] >= 10 and item[6][:2] == "01" and int(item[6][2:4], 16) & 3 == 3:
                 x, y = struct.unpack(">ff", bytes.fromhex(item[6][4:20]))
                 state.position_static(f"e{item[1]}", x, y)
@@ -1004,7 +1005,7 @@ def self_check() -> int:
         apply_line(json.dumps({"type": "join_samples", "items": [[5, 36, 1, 129, "0x0", 100,
             "010f05000000040000000500000003000000e10000000200000005000000010000000500000000000000070001a90a000001a90a05"
             + "0000000000000000000000000000000000000000000000ee01000200000003000000dc000000000000000200000002"]]}), state15)
-        assert state15.objects["e36"]["attributes"] == {"STR": 5, "DEX": 5, "INT": 225, "FOC": 5, "CON": 5}, state15.objects["e36"]
+        assert state15.objects["e36"]["attributes"] == {"attr4": 5, "attr3": 5, "DEX": 225, "attr1": 5, "attr0": 5}, state15.objects["e36"]
 
         # a static position stays until an ALC one arrives, and never overrides one
         apply_line(json.dumps({"type": "join_samples", "items": [[1, 41, 1, 13, "0x0", 15, "0103460ab2be4582dc881d0603ff09"], [2, 41, 0, 12, "0x0", 3, "010108"]]}), state15)
