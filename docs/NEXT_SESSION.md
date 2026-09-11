@@ -242,5 +242,9 @@ Reading order for this part: `docs/Network/decoder-state.md` (the health section
 `health-field.md` (the 19-member static table), `replicated-state-todo.md` (the per-state TODO and the
 working loop).
 
-Current next technical step: the field mask bits of members 1..18, member by member, starting from
-stamina and mana, because sprint and cast payloads are already in the captures above.
+Current next technical step: the field mask bits of members 1..18, member by member. A first attempt
+with a corrected action sequence (spells on Q, R and F) gave member 1 as a float32 in `[0, 100]`
+(`64.10` before the drain, `100.0` two seconds later), which is what mana would look like for three
+casts from full, but the spells produced no update of their own, and nothing fell while sprinting.
+The mouse drain works, so the open question is whether the injected **keyboard** reaches the game at
+all: settle that first, because stamina and mana both need it.

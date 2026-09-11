@@ -80,10 +80,14 @@ The member order is the order of the registration calls in the object builder `F
 | 7-12 | `+0x838`..`+0x900` | six unnamed `0x28`-byte structures |
 | 13-18 | `+0xf48`..`+0x1000` | `vitalsId`, `vitalsCategoryId`, `vitalsLevel`, `invulnerability`, `displayImmuneWhenInvulnerable`, `maxHealth` |
 
-Still open: the bits and widths of every member other than member 0's bit 0, how the amount
-structures encode their value (a payload correlated with sprint does **not** decode as a plain
-float32, so at least one of them is quantised), and the reader's third stage (a delta list, varint
-plus member vtable `+0x50`).
+Member 1, field bit 0, is a float32 in `[0, 100]` (64.10 right before the drain, refilled to 100.0
+within two seconds): mana is the obvious reading, but not proven.
+
+Still open: the bits and widths of the other members, stamina in particular (a capture with the
+sprint phase showed **no** resource falling while sprinting, and an injected `w`+`shift` pair moved
+no object that can be tied to the player, so the sprint itself is in doubt - the mouse drain works,
+the injected keyboard may not arrive), how the non-health amounts encode their value, and the
+reader's third stage (a delta list, varint plus member vtable `+0x50`).
 
 ### PlayerComponentReplicatedState: what we have
 

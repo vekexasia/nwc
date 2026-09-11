@@ -43,6 +43,10 @@ Where the numbers come from: `worldPosAbs` = two big-endian float32 then a quant
 
 ## Health: decoded from the traffic and validated against the game's own numbers
 
+The structure is confirmed by a payload that carries two members, `03 01 <f32> 01 <f32>`: the member
+mask `0x03` says members 0 and 1 follow, and each carries **its own field mask** before its fields
+(member 0: field mask `0x01`, one float32; member 1: field mask `0x01`, one float32).
+
 **The health is readable.** The Vitals payload is one `[member mask][field mask][fields]` block per
 member that changed, in the state's member order: the reader `0x17b4110` reads a member mask, then
 that member's own field mask, consumes the fields of each set bit, and moves to the next member. So
@@ -75,6 +79,12 @@ The member order is recovered too: it is the order of the registration calls in 
 `vitalsId`, `vitalsCategoryId`, `vitalsLevel`, `invulnerability`, `displayImmuneWhenInvulnerable`,
 `maxHealth`. The nine unnamed members are contiguous `0x28`-byte structures at `+0x7c0`..`+0x928`,
 which is what makes them look like three amounts with three attributes each.
+
+Member 1, field bit 0, is a **float32 in `[0, 100]`** (not the health scale): on the capture above it
+reads `64.10` in the 40 ms before the drain starts and refills to `100.0` within two seconds. Three
+spells cast from full with a cost of ~12 each would land exactly there, so mana is the obvious reading
+- but the spells themselves produced no member-1 update in that capture, so this is indicated, not
+proven.
 
 Still open: the bits and widths of every member other than 0, and how the amount members other than
 `HealthAmount` encode their value (the sprint-correlated payload does **not** decode as a plain
