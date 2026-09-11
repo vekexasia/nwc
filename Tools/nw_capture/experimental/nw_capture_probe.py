@@ -37,6 +37,35 @@ PFX = str(STEAM / "compatdata/1063730/pfx")
 PORT = 27943
 
 
+def game_host_pids():
+    """Host PIDs of NewWorld.exe, matched on the process name so our own command line cannot match."""
+    out = subprocess.run(["ps", "-eo", "pid,comm"], capture_output=True, text=True).stdout
+    pids = []
+    for line in out.splitlines()[1:]:
+        parts = line.split()
+        if len(parts) >= 2 and parts[1] == "NewWorld.exe":
+            pids.append(int(parts[0]))
+    return pids
+
+
+def stale_agent_pids():
+    """Game processes that still have a frida agent mapped: their attach always times out.
+
+    An injected agent stays inside the target until the target restarts and cannot be unloaded from
+    outside, so the only fix is a new game process. Detecting it here turns a 25 second timeout into
+    an immediate, actionable message.
+    """
+    stale = []
+    for pid in game_host_pids():
+        try:
+            maps = Path(f"/proc/{pid}/maps").read_text(errors="ignore")
+        except OSError:
+            continue
+        if "frida-agent" in maps:
+            stale.append(pid)
+    return stale
+
+
 def leftover_servers():
     """PIDs of frida-server processes left behind by a killed capture."""
     mine = {os.getpid(), os.getppid()}
@@ -72,6 +101,20 @@ def main(argv=None):
     except capture_lock.CaptureBusy as busy:
         print(f"BLOCKED: {busy}", file=sys.stderr)
         return 1
+
+    stale = stale_agent_pids()
+    if stale:
+        print("BLOCKED: NewWorld.exe already carries an injected frida agent", file=sys.stderr)
+        print(f"  host pid(s): {', '.join(str(pid) for pid in stale)}", file=sys.stderr)
+        print("  An agent stays inside the game until the game restarts and cannot be unloaded from",
+              file=sys.stderr)
+        print("  outside, so every attach would time out after 25 seconds.", file=sys.stderr)
+        print("  Fix: restart the game (`steam -applaunch 1063730`) and capture again.", file=sys.stderr)
+        print("  Do NOT delete .../Temp/re.frida.server instead: unlinking the file of a mapped agent",
+              file=sys.stderr)
+        print("  is what makes the process permanently unattachable.", file=sys.stderr)
+        capture_lock.release(lock)
+        return 3
 
     env = dict(os.environ, WINEPREFIX=PFX, WINEDEBUG="-all")
     server = subprocess.Popen([RUNTIME, "--", WINE, str(REPO / "Tools/nw_capture/frida-server.exe"),

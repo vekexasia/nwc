@@ -426,3 +426,9 @@ From then on Frida cannot inject a new agent into that process: the orphan holds
   capture at a time, and stop it through the tool.
 - If a capture fails with `frida-agent.dll: File exists`, the fix is **restarting the game**, not
   cleaning the prefix. The in-process agent cannot be unloaded from outside.
+
+The capture tool now refuses to start in that state instead of timing out: it reads `/proc/<pid>/maps`
+of every `NewWorld.exe` host process, and if a `frida-agent` mapping is there (with the capture lock
+held, so no other capture can be the owner) it prints the host pid, the reason and the fix, and exits
+with code 3. The check is exercised by every capture and does not match its own command line, because
+it matches on the process name rather than on a command-line pattern.
