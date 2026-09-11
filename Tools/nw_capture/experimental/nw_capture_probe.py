@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import os
+import signal
 import socket
 import subprocess
 import sys
@@ -89,6 +90,9 @@ def main(argv=None):
                         help="seconds to wait for a running capture (default: NW_CAPTURE_WAIT or 900)")
     args = parser.parse_args(argv)
     args.probe = args.probe.resolve()   # _runner resolves relative probes against Tools/nw_capture
+    # A shell background job starts with SIGINT ignored; take it back so `kill -INT <pid>` is the clean
+    # stop (KeyboardInterrupt -> detach), instead of a capture that only ends at its timeout.
+    signal.signal(signal.SIGINT, signal.default_int_handler)
 
     try:
         lock = capture_lock.acquire(args.label, wait=args.wait)
