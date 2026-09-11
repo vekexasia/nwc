@@ -101,6 +101,7 @@ def parse_full_state(payload: bytes):
         33..34 u16  35..38 f32 (100 players, 1.0 mobs: mana base max)  39..41 three u8
         42..45 vitalsId crc32, 46..49 vitalsCategoryId crc32 (mobs; players carry 'Player' + 4 bytes)
         50..53 u32 vitalsLevel, 54..55 u16 flags (mobs only: 56-byte payloads)
+        52-byte payloads (invasion mobs) skip the category id: 46..49 u32 level, 50..51 u16 flags
     """
     if len(payload) < 42 or payload[1] != 0xFF or payload[27] != 0xFF or not payload[0] & 1:
         return {}
@@ -109,6 +110,9 @@ def parse_full_state(payload: bytes):
     if len(payload) == 56:
         out["vitals_category_id"] = payload[46:50].hex()
         out["level"] = struct.unpack(">I", payload[50:54])[0]
+    elif len(payload) == 52:
+        # no category id: vitals id, u32 level, u16 flags (Invasion_Grunt 60, Invasion_Sniper 63, live 201741)
+        out["level"] = struct.unpack(">I", payload[46:50])[0]
     return out if all(math.isfinite(v) for v in (out["health"], out["health_base_max"])) else {}
 
 
@@ -173,6 +177,8 @@ def self_check() -> int:
     assert round(9954.2 - 9591.8, 1) == 362.4     # the drain the player saw as 362
     wolf = parse_full_state(bytes.fromhex("01ff4418400000000000000bb0f5d4ffcea7c90000000000000000ff004418400000003f8000004f0000d69ee7124f97b6a8000000060261"))   # Grey Wolf e159, live3 log
     assert wolf and wolf["health_base_max"] == 609.0 and wolf["level"] == 6 and wolf["vitals_id"] == "d69ee712", wolf
+    grunt = parse_full_state(bytes.fromhex("01ff" + "00" * 25 + "ff" + "00" * 14 + "8b241eb80000003c352b"))
+    assert grunt["level"] == 60 and grunt["vitals_id"] == "8b241eb8", grunt
     print("self-check ok: quattro payload verificati e i due delta di riferimento")
     return 0
 
