@@ -292,3 +292,37 @@ each field** (the id fields are structures, not integers) and the **link between
 the ALC/Vitals states of the same entity** - the replica id is in the bundle header, so the join has to
 come from the bundle order at runtime or from a shared field. Full table and method:
 `docs/Network/player-component.md`.
+
+## Update 2026-09-11: injecting input without stealing the desktop, what works and what broke
+
+Goal: run the action sequence without the focus flicker on the user's screen. Two routes were tried.
+
+**1. An output headless in Hyprland (rejected, but for a fixable reason).** On Hyprland 0.56 the
+classic dispatchers are gone: `hl.dsp.*` builds a *closure* that must be passed to `hl.dispatch`, which
+is why `hyprctl eval 'hl.dsp.window.move{...}'` answers `ok` and does nothing. The working call is
+
+```sh
+hyprctl dispatch 'hl.dsp.window.move({ window = "address:0x…", monitor = "nw-headless", follow = false })'
+```
+
+With a dummy output (`hyprctl output create headless nw-headless`) and the game moved onto it, an
+injected `m` **did** reach the game: the map opened, confirmed by `grim -o nw-headless`, while the
+physical monitor kept showing the user's desktop and the cursor and focus were handed back in the same
+second. The injection route works.
+
+What broke is the **side effect of creating the output**: Hyprland 0.56 redistributed workspaces onto
+the new monitor, which moved 17 of the user's windows to a workspace they did not belong to and made
+the desktop look rearranged. All of them were moved back by hand. If this route is ever revisited, pin
+the user's workspaces first with explicit `workspace = N, monitor:HDMI-A-2` rules, so a new output
+cannot claim them.
+
+**2. Driving the action layer directly (dead end, for now).** The action names are in the binary
+(`Sprint` at `0x1480782dc`, `Sprint_Start`, `Dodge` at `0x1480782f8`) but Ghidra finds **no code xref**
+to any of them, and a read-only scan of every writable memory range found **no pointer** to those
+strings either. So the runtime action objects do not reference the name strings, and the user-facing
+names are presumably keyed by something else (hash or a table). The route would need another entry
+point; it is not a matter of calling a function found by name.
+
+The input path itself is also structurally hostile to synthetic events: the game imports
+`GetRawInputData`, so `PostMessage` style events are ignored, and under Proton raw input only flows to
+the focused window, which is why focus has been needed at all.
