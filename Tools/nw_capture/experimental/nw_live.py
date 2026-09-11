@@ -296,7 +296,7 @@ class LiveState:
                             self.pending_dealt.remove((at, amount, target))
                             break
                     self.feed.append({"at": now, "key": key, "name": slot.get("name"), "delta": delta, "health": slot["health"]})
-                    del self.feed[:-60]
+                    del self.feed[:-400]
             if "mana" in decoded:
                 slot["mana"] = round(decoded["mana"], 2)
                 self.counters["mana"] += 1
@@ -393,7 +393,7 @@ class LiveState:
         """A per-hit damage RMI: exact amounts, unlike the health deltas sampled from state."""
         with self.lock:
             self.feed.append({"at": time.time(), **entry})
-            del self.feed[:-200]
+            del self.feed[:-400]
             if entry.get("target"):
                 self.pending_dealt.append((time.time(), -entry["delta"], entry["target"]))
                 del self.pending_dealt[:-20]
@@ -538,7 +538,10 @@ class LiveState:
                 # inside the lock already: calibration_active() would take it again
                 "calibrating": self.calibration is not None and time.time() < self.calibration["until"],
                 "objects": {k: v for k, v in sorted(self.objects.items())},
-                "feed": [self._with_target(f) for f in self.feed[-30:]],
+                # the player's own lines survive the flood of other mobs' health deltas
+                "feed": [self._with_target(f) for f in sorted(
+                    [f for f in self.feed if f["key"] in ("e1", "dealt", "death")][-20:]
+                    + [f for f in self.feed if f["key"] not in ("e1", "dealt", "death")][-10:], key=lambda f: f["at"])],
                 "chat": self.chat_log[-30:],
                 "targeted_by": [self._with_target({"target": t})["target_name"] if t in self.net_ids else "?" for t in self.targeted_by],
             }
