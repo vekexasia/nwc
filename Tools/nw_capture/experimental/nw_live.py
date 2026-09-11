@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import struct
 import sys
@@ -40,6 +41,8 @@ def decode_abs(payload_hex: str):
     if len(raw) < 10:
         return None
     x, y, elevation = struct.unpack(">ffH", raw[:10])
+    if not (math.isfinite(x) and math.isfinite(y)):
+        return None
     if not (-1e6 < x < 1e6 and -1e6 < y < 1e6):
         return None
     # The u16 is the quantised elevation as it comes off the wire: the affine mapping back to world
@@ -69,6 +72,8 @@ class LiveState:
         return self.objects.setdefault(key, {"object": key})
 
     def position(self, key: str, position: dict) -> None:
+        if not all(math.isfinite(position.get(k, 0.0)) for k in ("x", "y")):
+            return
         with self.lock:
             previous = self._slot(key).get("position")
             self._slot(key).update({"position": position, "position_at": time.time()})
@@ -113,6 +118,7 @@ class LiveState:
         with self.lock:
             slot = self._slot(key)
             slot["vitals_at"] = time.time()
+            decoded = {k: v for k, v in decoded.items() if math.isfinite(v)}
             if "health" in decoded:
                 slot["health"] = round(decoded["health"], 1)
                 self.counters["health"] += 1
@@ -268,7 +274,9 @@ def make_handler(state: LiveState):
 
         def do_GET(self):
             if self.path.startswith("/state"):
-                body = json.dumps(state.snapshot()).encode()
+                # allow_nan=False: a non-finite number would make the browser's JSON.parse fail, which
+                # is exactly what showed up as "cannot reach the server" in the page.
+                body = json.dumps(state.snapshot(), allow_nan=False).encode()
                 ctype = "application/json"
             elif self.path in ("/", "/index.html"):
                 body = HERE_PAGE.read_bytes()
@@ -287,6 +295,32 @@ def make_handler(state: LiveState):
                 pass   # the browser navigated away mid-request (clicking a link does this)
 
     return Handler
+
+
+def check_page_script() -> str:
+    """The page's inline script must parse. A stray redeclaration killed it silently once."""
+    import re
+    import shutil
+    import subprocess as sp
+    import tempfile
+
+    html = HERE_PAGE.read_text()
+    match = re.search(r"<script>(.*?)</script>", html, re.S)
+    if match is None:
+        return "the page has no inline script?"
+    node = shutil.which("node")
+    if node is None:
+        return "node not found: page script not checked"
+    with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False) as handle:
+        handle.write(match.group(1))
+        path = handle.name
+    try:
+        result = sp.run([node, "--check", path], capture_output=True, text=True)
+        if result.returncode != 0:
+            raise AssertionError("page script does not parse: " + result.stderr.strip().splitlines()[-1])
+    finally:
+        Path(path).unlink(missing_ok=True)
+    return "page script parses"
 
 
 def self_check() -> int:
@@ -337,13 +371,24 @@ def self_check() -> int:
         assert picked["object"] == "0xwalker", picked
         assert picked["distance"] == 30.0, picked
         assert picked["margin_over_next"] and picked["margin_over_next"] > 10, picked
+        # a NaN must never reach the JSON: the browser cannot parse it
+        state3 = LiveState()
+        state3.me_path = Path(tmp) / "me3.json"
+        nan_payload = struct.pack(">f", float("nan")).hex()
+        state3.vitals("0xnan", {"health": float("nan"), "mana": 12.5})
+        state3.position("0xnan", {"x": float("inf"), "y": 1.0, "elev_raw": 1})
+        blob = json.dumps(state3.snapshot(), allow_nan=False)      # must not raise
+        assert "NaN" not in blob and "Infinity" not in blob, blob
+        assert state3.snapshot()["objects"]["0xnan"].get("mana") == 12.5, state3.snapshot()
+
         # when nothing moves the previous identification is kept, and the run says so
         state2.start_calibration(10.0)
         state2.position("0xidle", {"x": 500.0, "y": 500.0, "elev_raw": 1})
         quiet = state2.finish_calibration()
         assert quiet["object"] == "0xwalker" and quiet["note"], quiet
         stop.set()
-    print("self-check ok: tail, position, health, mana, name, partial line, and the walk calibration")
+    print("self-check ok: tail, position, health, mana, name, partial line, walk calibration, "
+          "JSON strictness, and " + check_page_script())
     return 0
 
 

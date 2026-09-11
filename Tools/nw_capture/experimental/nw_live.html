@@ -37,8 +37,9 @@
 <div id="right">
   <header>
     <span class="dim">objects seen</span>
-    <span class="dim" id="hint">the probe does not know which object is you: pick it here and it stays.
-      Names are provisional (the field types are not decoded yet); elevation is the raw wire value.</span>
+    <span class="dim" id="hint">"identify me" watches which object moves while you walk: nothing to
+      pick from a list. Names are provisional (the field types are not decoded yet) and elevation is the
+      raw wire value.</span>
   </header>
   <div id="tableWrap">
     <table>
@@ -131,7 +132,13 @@ function render(snapshot) {
     while (trail.length > MAX_POINTS) trail.shift();
   }
   const rows = Object.entries(objects)
-    .sort((a, b) => (b[1].position_at || b[1].vitals_at || 0) - (a[1].position_at || a[1].vitals_at || 0));
+    .sort((a, b) => {
+      if (a[0] === selected) return -1;              // you first
+      if (b[0] === selected) return 1;
+      const aPos = a[1].position ? 1 : 0, bPos = b[1].position ? 1 : 0;
+      if (aPos !== bPos) return bPos - aPos;         // then the ones we can place on the map
+      return (b[1].position_at || b[1].vitals_at || 0) - (a[1].position_at || a[1].vitals_at || 0);
+    });
   const now = snapshot.now;
   document.getElementById("rows").innerHTML = rows.map(([key, slot]) => {
     const age = Math.max(slot.position_at || 0, slot.vitals_at || 0, slot.player_at || 0);
@@ -145,7 +152,17 @@ function render(snapshot) {
   for (const row of document.querySelectorAll("#rows tr")) {
     row.onclick = () => { selected = row.dataset.key; localStorage.setItem("nw.live.me", selected); syncSelect(objects); };
   }
-  if (selected) document.getElementById("meLabel").textContent = `me: ${selected.slice(0, 12)}`;
+  // the server is the source of truth for who "me" is: it persists it, the page does not
+  const meInfo = snapshot.me || {};
+  if (meInfo.object) {
+    selected = meInfo.object;
+    document.getElementById("meLabel").textContent =
+      `me: ${meInfo.object.slice(0, 12)}` +
+      (meInfo.method ? ` (${meInfo.method}${meInfo.distance ? `, moved ${meInfo.distance} units` : ""}` +
+        (meInfo.margin_over_next ? `, ${meInfo.margin_over_next}x the next` : "") + ")" : "");
+  } else {
+    document.getElementById("meLabel").textContent = "me: not identified — press the button and walk";
+  }
   const me = objects[selected];
   const link = document.getElementById("maplink");
   if (me && me.position) {

@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import collections
 import json
+import math
 import struct
 from pathlib import Path
 
@@ -58,7 +59,9 @@ def parse_members(payload: bytes):
                 if field_mask & FIELD_HEALTH:
                     if index + 4 > len(payload):
                         return out
-                    out["health"] = struct.unpack(">f", payload[index:index + 4])[0]
+                    value = struct.unpack(">f", payload[index:index + 4])[0]
+                    if math.isfinite(value):
+                        out["health"] = value
                     index += 4
                 if field_mask & 0x08:
                     if index >= len(payload):
@@ -70,7 +73,9 @@ def parse_members(payload: bytes):
                 if field_mask & FIELD_HEALTH:
                     if index + 4 > len(payload):
                         return out
-                    out["mana"] = struct.unpack(">f", payload[index:index + 4])[0]
+                    value = struct.unpack(">f", payload[index:index + 4])[0]
+                    if math.isfinite(value):
+                        out["mana"] = value
                     index += 4
                 if field_mask & ~0x01:
                     return out
@@ -136,6 +141,8 @@ def self_check() -> int:
         payload = bytes.fromhex(payload_hex)
         got = struct.unpack(">f", payload[2:6])[0]
         assert abs(got - expected) < 0.1, (payload_hex, got, expected)
+    nan_health = bytes([0x01, 0x01]) + struct.pack(">f", float("nan"))
+    assert "health" not in parse_members(nan_health), "a NaN health must not be decoded as a value"
     assert round(9954.2 - 9896.5, 1) == 57.7      # the heal the player saw as +57
     assert round(9954.2 - 9591.8, 1) == 362.4     # the drain the player saw as 362
     print("self-check ok: quattro payload verificati e i due delta di riferimento")
