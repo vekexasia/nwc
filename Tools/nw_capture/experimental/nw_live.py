@@ -341,7 +341,12 @@ class LiveState:
         named player, 0 on pets, camps and mobs, 76 vs 76 entities over three logs). A pet wears its
         owner's PlayerComponent name, so the name alone cannot tell."""
         with self.lock:
-            self._slot(key)["npc"] = not player
+            slot = self._slot(key)
+            slot["npc"] = not player
+            # a Vitals full state means an entity entered scope under this index: an index reused after an
+            # outpost or a static thing must not keep their marks (e16 wore "outpost" as a player in OPR)
+            for stale in ("capture_point", "cp_state", "static", "gatherable"):
+                slot.pop(stale, None)
 
     def interacting(self, key: str, active: bool) -> None:
         """InteractReplicatedState (2930) `01 01 01` while an entity is in an interaction (gathering, and
