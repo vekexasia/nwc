@@ -459,7 +459,13 @@ Coordination note: two agents worked on this tree today. `nw_capture_probe.py` n
 frida-servers only after taking the capture lock (a leftover found before the lock was the other
 capture's live server). Captures serialise on `/tmp/nw-capture.lock`; wait for it, do not clear it.
 
+The pose needs no extra hook: the `slayer*` fields are inside the ALC payload the join probe already
+logs, and `decode_join.py --timeline 1` (from a join log, or `--ledger` from any old capture whose
+stream frames) prints the player's state machine. First rows of the table, from one walk and the
+`actions2` run: `0x1a` walking, `0x1b` stopping, `0x1f` idle, `0x2d` cast/hit
+(`docs/Network/pose-state.md`).
+
 Next, in order: (1) make the live view default "me" to `e1` and keep the V1 -> name map for the
-session (names arrive once, at scope entry); (2) hook the `slayer*` field readers with the same
-per-thread V1 tag and drive known actions to build the `slayerStateId -> action` table (pose);
-(3) the ALC encoder with a decode -> encode -> identical-bytes round trip over the captured chunks.
+session (names arrive once, at scope entry); (2) one action per capture with the join probe
+(jump, dodge, attacks, weapon draw, mount) to fill the pose table; (3) the ALC encoder with a
+decode -> encode -> identical-bytes round trip over the captured chunks.
