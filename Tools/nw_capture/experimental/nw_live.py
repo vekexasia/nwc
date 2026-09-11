@@ -56,6 +56,10 @@ class LiveState:
         self.objects: dict[str, dict] = {}
         self.me: dict = {"object": None, "method": None}
 
+        self.history: dict[str, list[tuple[float, float, float]]] = {}
+        self.auto_strikes: dict[str, int] = {}
+        self.auto_debug: dict = {}
+        self.last_auto = 0.0
         self.me_path = Path(os.environ.get("NW_LIVE_ME", "/tmp/nwc/nw_live_me.json"))
         if self.me_path.exists():
             try:
@@ -113,6 +117,11 @@ class LiveState:
             self._follow(key, position)
             if self.me.get("object") == key:
                 self.me["at"] = time.time()
+            now = time.time()
+            history = self.history.setdefault(key, [])
+            history.append((now, position["x"], position["y"]))
+            while history and now - history[0][0] > 8.0:
+                history.pop(0)
             previous = self._slot(key).get("position")
             self._slot(key).update({"position": position, "position_at": time.time()})
             self.counters["position"] += 1
@@ -122,7 +131,7 @@ class LiveState:
                 if step < 500:      # a teleport or a bad read is not a step
                     window["moved"][key] = window["moved"].get(key, 0.0) + step
 
-    def start_calibration(self, seconds: float = 3.0) -> None:
+    def start_calibration(self, seconds: float = 3.0) -> None:   # manual override, kept for the page
         """Watch the next seconds of movement: the object that walks is the player."""
         with self.lock:
             self.calibration = {"started": time.time(), "until": time.time() + seconds, "moved": {}}
@@ -181,6 +190,60 @@ class LiveState:
         me["stale"] = bool(me.get("object")) and (me["position_age_s"] is None or me["position_age_s"] > 45)
         return me
 
+    HISTORY_WINDOW = 8.0          # seconds of movement the auto tracker looks at
+    AUTO_EVERY = 2.0              # how often it re-evaluates
+    AUTO_MIN_MOVE = 25.0          # in 8s a walking player covers tens of units; a wandering mob does not
+    AUTO_MARGIN = 1.6             # ...and beat the next candidate by this much (mobs wander too)
+    AUTO_CONFIRMATIONS = 2        # ...twice in a row, so one lucky window does not decide it
+    AUTO_KEEP_FRACTION = 0.4      # if the current "me" still moves this much of the best, keep it
+
+    def _auto_identify(self, now: float) -> None:
+        """Pick the player without being told: the object that is walking is the one being walked.
+
+        Scoped on purpose: this only ever decides *identity*, never the coordinates, and every decision
+        is reported with its margin so a wrong pick is visible in the page instead of silent.
+        """
+        if now - self.last_auto < self.AUTO_EVERY:
+            return
+        self.last_auto = now
+        moved: dict[str, float] = {}
+        for key, history in self.history.items():
+            if len(history) < 2:
+                continue
+            displacement = max(
+                abs(point[1] - history[0][1]) + abs(point[2] - history[0][2]) for point in history)
+            if displacement >= self.AUTO_MIN_MOVE:
+                moved[key] = displacement
+        self.auto_debug = {
+            "candidates": {key: round(value, 1) for key, value in sorted(
+                moved.items(), key=lambda kv: -kv[1])[:4]},
+            "window_s": self.HISTORY_WINDOW,
+            "min_move": self.AUTO_MIN_MOVE,
+            "margin_needed": self.AUTO_MARGIN,
+            "strikes": {key: value for key, value in self.auto_strikes.items() if value},
+        }
+        if not moved:
+            return
+        best = max(moved, key=moved.get)
+        best_distance = moved[best]
+        runner_up = max((value for key, value in moved.items() if key != best), default=0.0)
+        current = self.me.get("object")
+        if current and moved.get(current, 0.0) >= self.AUTO_KEEP_FRACTION * best_distance:
+            return                                  # the one we already follow is moving: keep it
+        if runner_up > 0 and best_distance < self.AUTO_MARGIN * runner_up:
+            self.auto_strikes[best] = 0             # ambiguous window: nothing decided
+            return
+        self.auto_strikes[best] = self.auto_strikes.get(best, 0) + 1
+        for key in list(self.auto_strikes):
+            if key != best:
+                self.auto_strikes[key] = 0
+        if self.auto_strikes[best] < self.AUTO_CONFIRMATIONS:
+            return
+        self.me = {"object": best, "method": "auto", "distance": round(best_distance, 1),
+                   "margin_over_next": round(best_distance / runner_up, 2) if runner_up else None,
+                   "at": now, "previous": current}
+        self._save_me()
+
     def tick(self) -> None:
         with self.lock:
             self.counters["lines"] += 1
@@ -188,12 +251,14 @@ class LiveState:
 
     def snapshot(self) -> dict:
         with self.lock:
+            self._auto_identify(time.time())
             return {
                 "now": time.time(),
                 "uptime_s": round(time.time() - self.started, 1),
                 "last_line_age_s": None if self.last_line_at is None else round(time.time() - self.last_line_at, 2),
                 "counters": dict(self.counters),
                 "me": self._me_view(),
+                "auto": dict(self.auto_debug),
                 # inside the lock already: calibration_active() would take it again
                 "calibrating": self.calibration is not None and time.time() < self.calibration["until"],
                 "objects": {k: v for k, v in sorted(self.objects.items())},
@@ -442,6 +507,26 @@ def self_check() -> int:
         state5.objects["0xold"]["position_at"] = time.time() - 60
         state5.position("0xfar", {"x": 500.0, "y": 500.0, "elev_raw": 1})
         assert state5.me["object"] == "0xold", state5.me
+
+        # auto identification: no button, the walker is adopted after two confirmations
+        state6 = LiveState()
+        state6.me_path = Path(tmp) / "me6.json"
+        state6.me = {"object": None, "method": None}   # the constructor loads the real one
+        state6.last_auto = 0.0
+        base = time.time() - 6
+        for step in range(6):
+            state6.position("0xwalker", {"x": 100.0 + 10 * step, "y": 100.0, "elev_raw": 1})
+            state6.position("0xstill", {"x": 900.0, "y": 900.0, "elev_raw": 1})
+        state6.history["0xwalker"] = [(base + i, 100.0 + 10 * i, 100.0) for i in range(6)]
+        state6._auto_identify(time.time())
+        assert state6.me.get("object") is None, state6.me          # one window is not enough
+        state6._auto_identify(time.time() + LiveState.AUTO_EVERY)
+        assert state6.me["object"] == "0xwalker", state6.me
+        assert state6.me["method"] == "auto" and state6.me["margin_over_next"] is None, state6.me
+        # ...and it does not switch away while the tracked object is still the one walking
+        state6.history["0xother"] = [(base + i, 500.0 + i, 500.0) for i in range(6)]
+        state6._auto_identify(time.time() + 2 * LiveState.AUTO_EVERY)
+        assert state6.me["object"] == "0xwalker", state6.me
 
         # when nothing moves the previous identification is kept, and the run says so
         state2.start_calibration(10.0)

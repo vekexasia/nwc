@@ -31,7 +31,7 @@
     <b>New World live</b>
     <span class="dim" id="status">starting</span>
     <span class="dim" id="counters"></span>
-    <button id="identify">identify me: walk 3s</button>
+    <button id="identify">re-identify now (walk 3s)</button>
     <label class="dim"><input type="checkbox" id="hideOthers"> hide everything that is not me or a named player</label>
     <span class="dim" id="meLabel">me: not identified</span>
     <a id="maplink" class="dim" href="#" target="_blank">community map</a>
@@ -118,8 +118,18 @@ function draw(objects) {
     if (hideOthers && !isMe && !isPlayer) continue;
     ctx.strokeStyle = isMe ? "#7cf07c" : (isPlayer ? "rgba(120,170,255,0.6)" : "rgba(140,160,190,0.28)");
     ctx.lineWidth = isMe ? 2.5 : 1;
+    // The game reuses these object slots, so the same id can report two distant places seconds apart.
+    // Rather than draw a straight line through a teleport we cannot explain, break the trail: a jump
+    // longer than this is not drawn at all.
+    const MAX_LEG = 25;
     ctx.beginPath();
-    trail.forEach((p, i) => { const [sx, sy] = toScreen(p); i ? ctx.lineTo(sx, sy) : ctx.moveTo(sx, sy); });
+    trail.forEach((p, i) => {
+      const [sx, sy] = toScreen(p);
+      if (!i) { ctx.moveTo(sx, sy); return; }
+      const previous = trail[i - 1];
+      if (Math.abs(p.x - previous.x) + Math.abs(p.y - previous.y) > MAX_LEG) ctx.moveTo(sx, sy);
+      else ctx.lineTo(sx, sy);
+    });
     ctx.stroke();
     const [lx, ly] = toScreen(trail[trail.length - 1]);
     ctx.fillStyle = isMe ? "#7cf07c" : (isPlayer ? "rgba(120,170,255,0.8)" : "rgba(180,200,220,0.5)");
@@ -179,7 +189,7 @@ function render(snapshot) {
     selected = meInfo.object;
     const followed = meInfo.followed_from ? ` — followed from ${meInfo.followed_from.slice(0, 10)}` : "";
     document.getElementById("meLabel").textContent = meInfo.stale
-      ? `me: ${meInfo.object.slice(0, 12)} is stale (${meInfo.position_age_s == null ? "no position since then" : meInfo.position_age_s + "s"}) — press identify me again`
+      ? `me: ${meInfo.object.slice(0, 12)} is stale (${meInfo.position_age_s == null ? "no position since then" : meInfo.position_age_s + "s"}) — walking will pick it up again by itself`
       : `me: ${meInfo.object.slice(0, 12)}${followed}` +
         (meInfo.method ? ` (${meInfo.method}${meInfo.distance ? `, moved ${meInfo.distance} units` : ""}` +
           (meInfo.margin_over_next ? `, ${meInfo.margin_over_next}x the next` : "") + ")" : "");
