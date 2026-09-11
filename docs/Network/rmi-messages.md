@@ -27,5 +27,10 @@ to 0.01. The player's own hits carry two entries when the weapon has an elementa
 14 Nature (the player's weapon: Thrust plus a Nature gem; the corrupted casters: Corruption and
 Lightning).
 
-Open: the trailing f32 of every entry (0.49 to 0.68, constant per attack), the flags bits, the
-attack id hash.
+The attack id is not a crc32 of any datasheet string (all `datatables/*.datasheet` strings tested,
+as-is and lower-cased): with the gemmed weapon the ids shared a low half (`....7545ea13`) the way
+the spell and projectile entity ids in `SpellComponentReplicatedState` do, so it is an instance id
+(the projectile or spell entity), `275fbc85 00000000` for the later hitscan weapon.
+
+Open: the trailing f32 of every entry (0.39 to 0.80, drifting slowly across hits), flag bits 0x0800
+and 0x0001.
