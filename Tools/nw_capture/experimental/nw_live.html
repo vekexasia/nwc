@@ -6,13 +6,10 @@
 <style>
   :root { color-scheme: dark; }
   body { margin: 0; font: 13px/1.4 ui-monospace, monospace; background: #14161a; color: #e6e6e6; display: flex; height: 100vh; }
-  #left { flex: 0 0 46%; display: flex; flex-direction: column; border-right: 1px solid #2b2f36; }
+  #left { flex: 0 0 52%; display: flex; flex-direction: column; border-right: 1px solid #2b2f36; }
   #right { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
   header { padding: 8px 10px; border-bottom: 1px solid #2b2f36; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-  #canvasWrap { flex: 1 1 45%; position: relative; min-height: 160px; }
-#mapWrap { flex: 1 1 55%; display: flex; flex-direction: column; border-top: 1px solid #2b2f36; min-height: 200px; }
-#mapBar { padding: 4px 8px; display: flex; gap: 8px; align-items: center; }
-#mapFrame { border: 0; flex: 1; width: 100%; background: #0d0f12; }
+  #canvasWrap { flex: 1; position: relative; min-height: 200px; }
   canvas { width: 100%; height: 100%; display: block; }
   table { border-collapse: collapse; width: 100%; }
   th, td { text-align: left; padding: 3px 8px; border-bottom: 1px solid #23272e; white-space: nowrap; }
@@ -21,7 +18,7 @@
   #tableWrap { overflow: auto; flex: 1; }
   .dim { color: #9aa4b2; }
   .warn { color: #e0a458; }
-  a { color: #7fb3ff; }
+  label { display: inline-flex; gap: 4px; align-items: center; }
   select, button { background: #1c2026; color: #e6e6e6; border: 1px solid #333a44; border-radius: 4px; padding: 2px 6px; font: inherit; }
 </style>
 </head>
@@ -30,27 +27,25 @@
   <header>
     <b>New World live</b>
     <span class="dim" id="status">starting</span>
-    <span class="dim" id="counters"></span>
+  </header>
+  <header>
     <button id="identify">re-identify now (walk 3s)</button>
+    <label class="dim"><input type="checkbox" id="followMe" checked> center on me</label>
     <label class="dim"><input type="checkbox" id="hideOthers"> hide everything that is not me or a named player</label>
+    <label class="dim"><input type="checkbox" id="showTiles" checked> map</label>
+  </header>
+  <header>
     <span class="dim" id="meLabel">me: not identified</span>
-    <a id="maplink" class="dim" href="#" target="_blank">community map</a>
+    <span class="dim" id="counters"></span>
   </header>
   <div id="canvasWrap"><canvas id="canvas"></canvas></div>
-  <div id="mapWrap">
-    <div id="mapBar" class="dim">community map
-      <button id="centerMap">center on me</button>
-      <span id="mapNote"></span>
-    </div>
-    <iframe id="mapFrame" title="community map" referrerpolicy="no-referrer"></iframe>
-  </div>
 </div>
 <div id="right">
   <header>
     <span class="dim">objects seen</span>
-    <span class="dim" id="hint">"identify me" watches which object moves while you walk: nothing to
-      pick from a list. Names are provisional (the field types are not decoded yet) and elevation is the
-      raw wire value.</span>
+    <span class="dim" id="hint">"identify me" watches which object moves while you walk: nothing to pick
+      from a list. Names are provisional (the field types are not decoded yet) and elevation is the raw
+      wire value.</span>
   </header>
   <div id="tableWrap">
     <table>
@@ -60,31 +55,27 @@
   </div>
 </div>
 <script>
-const MAX_POINTS = 4000;
+// ---------------------------------------------------------------- the map, built from the tiles
+//
+// The community map uses leaflet's simple CRS with Transformation(1/16, 0, -1/16, 0) and [lat=Y,
+// lng=X] (see docs/Network/nwdb-map-research.md). Its level-1 tiles are 1024 px and, checking the
+// tiles the live page asks for around a known position, one tile covers 256 world units from an origin
+// at (0, 0): tile (i, j) is X in [256i, 256i+256), Y in [256j, 256j+256), 4 pixels per unit, with Y
+// growing north so the image row is flipped. Drawing the trail in that same pixel space is what keeps
+// the two aligned, without driving anybody else's page.
+const TILE = 1024, UNITS_PER_TILE = 256, PX = TILE / UNITS_PER_TILE;
+const tileUrl = (i, j) =>
+  `https://aeternum-map.th.gl/assets/newworld_vitaeeterna/map_l1_y${String(j).padStart(3, "0")}_x${String(i).padStart(3, "0")}.webp?v=7`;
+const worldToPx = p => [p.x * PX, -p.y * PX];   // global pixel space, y flipped
+
+const MAX_POINTS = 4000, MAX_LEG = 25;
 const trails = new Map();
+const tiles = new Map();
 let selected = localStorage.getItem("nw.live.me") || "";
-let lastCounters = null;
+let currentMe = null;
 
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
-document.getElementById("identify").onclick = async (event) => {
-  event.target.disabled = true;
-  event.target.textContent = "walk now (3s)...";
-  try {
-    const result = await (await fetch("/calibrate", { method: "POST" })).json();
-    selected = result.object || "";
-    if (selected) {
-      document.getElementById("meLabel").textContent =
-        `me: ${selected.slice(0, 12)} (moved ${result.distance ?? "?"} units, ${result.margin_over_next ?? "?"}x the next)`;
-    } else {
-      document.getElementById("meLabel").textContent = "me: " + (result.note || "nothing identified");
-    }
-  } catch (error) {
-    document.getElementById("meLabel").textContent = "me: calibration failed";
-  }
-  event.target.disabled = false;
-  event.target.textContent = "identify me: walk 3s";
-};
 
 function fit() {
   const box = canvas.parentElement.getBoundingClientRect();
@@ -94,57 +85,101 @@ function fit() {
 }
 window.addEventListener("resize", fit);
 
+function tileImage(i, j) {
+  const key = i + "," + j;
+  let entry = tiles.get(key);
+  if (entry === undefined) {
+    const image = new Image();
+    entry = { image, ready: false };
+    image.onload = () => { entry.ready = true; };
+    image.onerror = () => { entry.failed = true; };
+    image.src = tileUrl(i, j);
+    tiles.set(key, entry);
+  }
+  return entry;
+}
+
 function draw(objects) {
   const w = canvas.width, h = canvas.height;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, w, h);
+
+  const weight = key => (key === selected ? 1 : (objects[key] && objects[key].name ? 2 : 3));
   const points = [];
-  for (const trail of trails.values()) for (const p of trail) points.push(p);
+  for (const [key, trail] of trails) {
+    if (document.getElementById("hideOthers").checked && weight(key) === 3) continue;
+    for (const p of trail) points.push(worldToPx(p));
+  }
   if (!points.length) {
-    ctx.fillStyle = "#6b7280"; ctx.font = "14px ui-monospace"; ctx.fillText("waiting for positions", 16, 28);
+    ctx.fillStyle = "#6b7280"; ctx.font = "14px ui-monospace";
+    ctx.fillText("waiting for positions", 16, 28);
     return;
   }
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-  for (const p of points) { minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x); minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y); }
-  const spanX = Math.max(maxX - minX, 20), spanY = Math.max(maxY - minY, 20);
-  const scale = Math.min((w - 40) / spanX, (h - 40) / spanY);
-  const ox = 20 + (w - 40 - spanX * scale) / 2, oy = h - 20 - (h - 40 - spanY * scale) / 2;
-  const toScreen = p => [ox + (p.x - minX) * scale, oy - (p.y - minY) * scale];
-  const hideOthers = document.getElementById("hideOthers").checked;
+  for (const [px, py] of points) {
+    minX = Math.min(minX, px); maxX = Math.max(maxX, px);
+    minY = Math.min(minY, py); maxY = Math.max(maxY, py);
+  }
+  const pad = 40;
+  const spanX = Math.max(maxX - minX, 64), spanY = Math.max(maxY - minY, 64);
+  let scale = Math.min((w - 2 * pad) / spanX, (h - 2 * pad) / spanY);
+  scale = Math.min(Math.max(scale, 0.02), 1);          // never zoom past the tiles' own resolution
+  const follow = document.getElementById("followMe").checked;
+  const focusWorld = currentMe && currentMe.position ? worldToPx(currentMe.position)
+    : [(minX + maxX) / 2, (minY + maxY) / 2];
+  const centreX = follow ? focusWorld[0] : (minX + maxX) / 2;
+  const centreY = follow ? focusWorld[1] : (minY + maxY) / 2;
+  const toScreen = (px, py) => [w / 2 + (px - centreX) * scale, h / 2 + (py - centreY) * scale];
+
+  if (document.getElementById("showTiles").checked) {
+    // which tiles cover the view, in the same pixel space the trail is drawn in
+    const halfW = (w / 2) / scale, halfH = (h / 2) / scale;
+    const i0 = Math.floor((centreX - halfW) / TILE), i1 = Math.floor((centreX + halfW) / TILE);
+    const j0 = Math.floor((-centreY - halfH) / TILE), j1 = Math.floor((-centreY + halfH) / TILE);
+    for (let i = i0; i <= i1; i++) {
+      for (let j = j0; j <= j1; j++) {
+        // the world is X 0..14336, Y 0..10000 with 256 units per tile: outside that there are no tiles
+        if (i < 0 || j < 0 || i > 56 || j > 39) continue;
+        const entry = tileImage(i, j);
+        if (!entry.ready) continue;
+        const [sx, sy] = toScreen(i * TILE, -j * TILE);
+        ctx.drawImage(entry.image, sx, sy, TILE * scale, TILE * scale);
+      }
+    }
+  }
+
   for (const [key, trail] of trails) {
     if (trail.length < 1) continue;
-    const isMe = key === selected;
-    const isPlayer = !!(objects[key] && objects[key].name);
-    if (hideOthers && !isMe && !isPlayer) continue;
-    ctx.strokeStyle = isMe ? "#7cf07c" : (isPlayer ? "rgba(120,170,255,0.6)" : "rgba(140,160,190,0.28)");
-    ctx.lineWidth = isMe ? 2.5 : 1;
-    // The game reuses these object slots, so the same id can report two distant places seconds apart.
-    // Rather than draw a straight line through a teleport we cannot explain, break the trail: a jump
-    // longer than this is not drawn at all.
-    const MAX_LEG = 25;
+    const isMe = key === selected, isPlayer = weight(key) === 2;
+    if (document.getElementById("hideOthers").checked && !isMe && !isPlayer) continue;
+    ctx.strokeStyle = isMe ? "#7cf07c" : (isPlayer ? "rgba(120,170,255,0.75)" : "rgba(255,120,120,0.45)");
+    ctx.lineWidth = isMe ? 3 : 1.5;
     ctx.beginPath();
-    trail.forEach((p, i) => {
-      const [sx, sy] = toScreen(p);
-      if (!i) { ctx.moveTo(sx, sy); return; }
-      const previous = trail[i - 1];
-      if (Math.abs(p.x - previous.x) + Math.abs(p.y - previous.y) > MAX_LEG) ctx.moveTo(sx, sy);
+    trail.forEach((p, index) => {
+      const [px, py] = worldToPx(p);
+      const [sx, sy] = toScreen(px, py);
+      if (!index) { ctx.moveTo(sx, sy); return; }
+      const previous = worldToPx(trail[index - 1]);
+      if (Math.abs(px - previous[0]) + Math.abs(py - previous[1]) > MAX_LEG * PX) ctx.moveTo(sx, sy);
       else ctx.lineTo(sx, sy);
     });
     ctx.stroke();
-    const [lx, ly] = toScreen(trail[trail.length - 1]);
-    ctx.fillStyle = isMe ? "#7cf07c" : (isPlayer ? "rgba(120,170,255,0.8)" : "rgba(180,200,220,0.5)");
-    ctx.beginPath(); ctx.arc(lx, ly, isMe ? 4 : 2, 0, Math.PI * 2); ctx.fill();
+    const last = worldToPx(trail[trail.length - 1]);
+    const [lx, ly] = toScreen(last[0], last[1]);
+    ctx.fillStyle = isMe ? "#7cf07c" : (isPlayer ? "rgba(120,170,255,0.9)" : "rgba(255,140,140,0.6)");
+    ctx.beginPath(); ctx.arc(lx, ly, isMe ? 5 : 3, 0, Math.PI * 2); ctx.fill();
   }
   const me = objects[selected];
   if (me && me.position) {
-    const [sx, sy] = toScreen(me.position);
+    const [mx, my] = worldToPx(me.position);
+    const [sx, sy] = toScreen(mx, my);
     ctx.fillStyle = "#fff"; ctx.font = "12px ui-monospace";
-    ctx.fillText(`${me.name || selected}  x=${me.position.x} y=${me.position.y}`, sx + 8, sy - 8);
+    ctx.fillText(`${selected}  x=${me.position.x} y=${me.position.y}`, sx + 8, sy - 8);
   }
-  ctx.fillStyle = "#6b7280"; ctx.font = "11px ui-monospace";
-  const drawn = [...trails.keys()].filter(k => !hideOthers || k === selected || (objects[k] && objects[k].name)).length;
-  ctx.fillText(`${Math.round(spanX)} x ${Math.round(spanY)} units  scale ${scale.toFixed(2)} px/unit  ` +
-    `trails: you + ${drawn - (trails.has(selected) ? 1 : 0)} others  (grey = mobs and scenery)`, 12, 16);
+  ctx.fillStyle = "#9aa4b2"; ctx.font = "11px ui-monospace";
+  ctx.fillText(`tiles ${
+    document.getElementById("showTiles").checked ? "on" : "off"}  scale ${scale.toFixed(3)}  ` +
+    `world units across the view: ${Math.round(spanX / PX)} x ${Math.round(spanY / PX)}`, 12, 16);
 }
 
 function render(snapshot) {
@@ -159,15 +194,15 @@ function render(snapshot) {
   }
   const rows = Object.entries(objects)
     .sort((a, b) => {
-      if (a[0] === selected) return -1;              // you first
+      if (a[0] === selected) return -1;
       if (b[0] === selected) return 1;
       const aPos = a[1].position ? 1 : 0, bPos = b[1].position ? 1 : 0;
-      if (aPos !== bPos) return bPos - aPos;         // then the ones we can place on the map
+      if (aPos !== bPos) return bPos - aPos;
       return (b[1].position_at || b[1].vitals_at || 0) - (a[1].position_at || a[1].vitals_at || 0);
     });
   const now = snapshot.now;
   document.getElementById("rows").innerHTML = rows.map(([key, slot]) => {
-    const age = Math.max(slot.position_at || 0, slot.vitals_at || 0, slot.player_at || 0);
+    const age = Math.max(slot.position_at || 0, slot.vitals_at || 0);
     const p = slot.position || {};
     return `<tr class="${key === selected ? "me" : ""}" data-key="${key}">` +
       `<td>${key.slice(0, 12)}</td><td>${slot.name || '<span class="dim">?</span>'}</td>` +
@@ -176,37 +211,24 @@ function render(snapshot) {
       `<td>${age ? (now - age).toFixed(1) + "s" : "-"}</td></tr>`;
   }).join("");
   for (const row of document.querySelectorAll("#rows tr")) {
-    row.onclick = () => { selected = row.dataset.key; localStorage.setItem("nw.live.me", selected); syncSelect(objects); };
+    row.onclick = () => {
+      selected = row.dataset.key;
+      localStorage.setItem("nw.live.me", selected);
+    };
   }
-  // the server is the source of truth for who "me" is: it persists it, the page does not
   const meInfo = snapshot.me || {};
-  const entityOf = snapshot.entity_of || {};
-  for (const [obj, entity] of Object.entries(entityOf)) {
-    if (entity === meInfo.entity || obj === meInfo.object) selected = entity;
-  }
   currentMe = objects[selected] || null;
   if (meInfo.object) {
     selected = meInfo.object;
     const followed = meInfo.followed_from ? ` — followed from ${meInfo.followed_from.slice(0, 10)}` : "";
+    const how = meInfo.method ? ` (${meInfo.method}${meInfo.distance ? `, moved ${meInfo.distance} units` : ""}` +
+      (meInfo.margin_over_next ? `, ${meInfo.margin_over_next}x the next` : "") + ")" : "";
     document.getElementById("meLabel").textContent = meInfo.stale
-      ? `me: ${meInfo.object.slice(0, 12)} is stale (${meInfo.position_age_s == null ? "no position since then" : meInfo.position_age_s + "s"}) — walking will pick it up again by itself`
-      : `me: ${meInfo.object.slice(0, 12)}${followed}` +
-        (meInfo.method ? ` (${meInfo.method}${meInfo.distance ? `, moved ${meInfo.distance} units` : ""}` +
-          (meInfo.margin_over_next ? `, ${meInfo.margin_over_next}x the next` : "") + ")" : "");
+      ? `me: ${selected.slice(0, 12)} stale (${meInfo.position_age_s == null ? "no position" : meInfo.position_age_s + "s"}) — walking picks it up again`
+      : `me: ${selected.slice(0, 12)}${followed}${how}`;
     document.getElementById("meLabel").className = meInfo.stale ? "warn" : "dim";
   } else {
-    document.getElementById("meLabel").textContent = "me: not identified — press the button and walk";
-  }
-  const me = objects[selected];
-  // the map must show something even before "me" is calibrated: fall back to the first placed object
-  const fallback = Object.values(objects).find(slot => slot.position);
-  centerOnMe(objects[selected] || objects[meInfo.object] || fallback);
-  const link = document.getElementById("maplink");
-  if (me && me.position) {
-    link.href = `https://aeternum-map.th.gl/?x=${Math.round(me.position.x)}&y=${Math.round(me.position.y)}&zoom=6`;
-    link.textContent = "community map @" + Math.round(me.position.x) + "," + Math.round(me.position.y);
-  } else {
-    link.href = "#"; link.textContent = "community map (pick an object)";
+    document.getElementById("meLabel").textContent = "me: not identified — start walking and it follows";
   }
   const age = snapshot.last_line_age_s;
   const status = document.getElementById("status");
@@ -215,27 +237,18 @@ function render(snapshot) {
                : `live: last line ${age}s ago`);
   status.className = age == null || age > 5 ? "warn" : "dim";
   document.getElementById("counters").textContent = JSON.stringify(snapshot.counters);
-  lastCounters = snapshot.counters;
   draw(objects);
 }
 
-function centerOnMe(slot, force) {
-  const frame = document.getElementById("mapFrame");
-  const note = document.getElementById("mapNote");
-  const target = slot && slot.position ? slot.position
-    : (slot && slot.entity_position ? slot.entity_position : null);
-  if (!target) { note.textContent = "no position yet"; return; }
-  const url = `https://aeternum-map.th.gl/?x=${Math.round(target.x)}&y=${Math.round(target.y)}&zoom=6`;
-  if (force || !frame.dataset.loaded) {
-    frame.src = url;
-    frame.dataset.loaded = "1";
-    note.textContent = "centered on " + Math.round(target.x) + "," + Math.round(target.y);
-  } else {
-    note.textContent = "map is elsewhere — press center on me";
-  }
-}
-document.getElementById("centerMap").onclick = () => centerOnMe(currentMe, true);
-let currentMe = null;
+document.getElementById("identify").onclick = async (event) => {
+  event.target.disabled = true;
+  event.target.textContent = "walk now (3s)...";
+  try {
+    await fetch("/calibrate", { method: "POST" });
+  } catch (error) { /* the server keeps its own state */ }
+  event.target.disabled = false;
+  event.target.textContent = "re-identify now (walk 3s)";
+};
 
 async function poll() {
   try {
@@ -243,8 +256,7 @@ async function poll() {
     render(await response.json());
   } catch (error) {
     document.getElementById("status").textContent =
-      `cannot reach the server on port ${location.port || 80} — is this tab from an older run? ` +
-      `open the address the server printed`;
+      `cannot reach the server on port ${location.port || 80} — is this tab from an older run?`;
   }
   setTimeout(poll, 250);
 }
