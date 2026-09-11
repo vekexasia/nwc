@@ -273,3 +273,22 @@ Also to re-check: the earlier captures interpreted the health drops as the playe
 drain. If the character was in a settlement then too, the ability cannot have fired, and the drops
 were ordinary damage from something else. The numbers matched what the game printed on screen, and
 that is what validates the decode; the mechanism that caused them is an interpretation, not evidence.
+
+## Update 2026-09-11 (last): PlayerComponent is decoded, and it carries the names
+
+The identity state was the Tier 1 gap. Its unmarshal (`0x6573d60`) is four lines and calls a builder,
+`FUN_146711e90`, which registers **31 fields with real names**: `characterId` (`+0x7c0`),
+`characterName` (`+0x870`), `homeWorldId` (`+0x8f0`), `srcWorldId`, `platformAccountId`, `playerType`,
+`loginMatchId`, and a set of account/store/transmog flags. Registration order is the member order, as
+for Vitals, and the same three-stage deserialiser (`FUN_146160ae0`) reads them.
+
+Verified live: `Tools/nw_capture/experimental/nw_player_probe.js` hooks the builder and reads the
+fields 150 ms later; a 20 second capture saw 21 PlayerComponent states and the character names came out
+as real names (`stormvind`, `Warrior3`, `Eins Fas ttv`). Three of our field names also line up with the
+community's independent decode of a spawn body (`character_name`, `player_type`, `platform_account_id`).
+
+What is still open, and it is the whole of the remaining attribution problem: the **type and width of
+each field** (the id fields are structures, not integers) and the **link between a PlayerComponent and
+the ALC/Vitals states of the same entity** - the replica id is in the bundle header, so the join has to
+come from the bundle order at runtime or from a shared field. Full table and method:
+`docs/Network/player-component.md`.

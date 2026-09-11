@@ -40,7 +40,7 @@ address our own static analysis names `FUN_142a327f0`
 |---|---:|---|
 | `ALCReplicatedState` | 11 | Decoded and verified: group-aware record payload, 1..9-byte mask reader, 48-property schema, `worldPosAbs`/`worldPosRel`, axis assignment cross-checked against 55739 community markers ([alc-protocol-reference.md](alc-protocol-reference.md), [decoder-state.md](decoder-state.md)) |
 | `VitalsComponentReplicatedState` | 15 | **Health decoded from live payloads and validated** against the game's own numbers; the payload is one `[member mask][field mask][fields]` block per member in the state's order, so the remaining fields are mapped member by member ([decoder-state.md](decoder-state.md), [health-field.md](health-field.md)) |
-| `PlayerComponentReplicatedState` | 3935 | Registry identity and one community reference body, no field map of our own. See below |
+| `PlayerComponentReplicatedState` | 3935 | **31-field table recovered from its builder, and read live**: `characterId`, `characterName`, `homeWorldId`, `platformAccountId` and 27 more ([player-component.md](player-component.md)). Not yet linked to the entity's ALC or Vitals state |
 | everything else | - | Not started |
 
 Open items on ALC itself, not new states: local-player identity and ownership, rotation/look
@@ -97,6 +97,14 @@ Still open: the bits and widths of the other members, how the non-health amounts
 and the reader's third stage (a delta list, varint plus member vtable `+0x50`).
 
 ### PlayerComponentReplicatedState: what we have
+
+**Update:** the state is decoded now. The builder `FUN_146711e90` registers 31 fields with real names
+(`characterId` `+0x7c0`, `characterName` `+0x870`, `homeWorldId` `+0x8f0`, `platformAccountId` `+0xe58`,
+...), the unmarshal goes through the same three-stage deserialiser as Vitals, and
+`nw_player_probe.js` reads the names from the live client (21 states, names like `stormvind` and
+`Warrior3` in a 20 second capture). The field table, the method and what is still open are in
+[player-component.md](player-component.md); the rest of this section is the earlier search, kept for
+the dead ends it records.
 
 Registry identity, from `087_typeregistry.json` and confirmed against the local `NewWorld.exe`: typeIndex
 3935, registry index 3160, uuid `BDDDA784-A6E7-416B-A041-449920D90FB6` (present in the executable in
