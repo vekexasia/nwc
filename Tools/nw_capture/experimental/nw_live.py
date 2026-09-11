@@ -1263,6 +1263,43 @@ def self_check() -> int:
     return 0
 
 
+def replay(path: Path, state: LiveState, stop: threading.Event, speed: float, start_hms: str | None) -> None:
+    """Feed a finished log at wall-clock pace (times speed): the page shows the session as it happened.
+    Sample timestamps are the probe's ms clock; batches are paced on the first item of each line.
+    --replay-from HH:MM:SS jumps to that local time first (everything before is applied at once)."""
+    import datetime
+    first = None
+    skip_until = None
+    if start_hms:
+        hour, minute, second = (int(x) for x in start_hms.split(":"))
+        base = datetime.datetime.fromtimestamp(path.stat().st_mtime).replace(hour=hour, minute=minute, second=second)
+        skip_until = base.timestamp() * 1000
+    started = time.time()
+    with open(path, "rb") as handle:
+        for raw in handle:
+            if stop.is_set():
+                return
+            line = raw.decode("utf-8", "replace")
+            marker = line.find('"items": [[')
+            ts = None
+            if marker > 0:
+                digits = line[marker + 11:marker + 25].split(",")[0]
+                ts = int(digits) if digits.isdigit() else None
+            if ts is not None:
+                if skip_until is not None and ts < skip_until:
+                    apply_line(line.rstrip("\n"), state)
+                    continue
+                if first is None:
+                    first = ts
+                    started = time.time()
+                    print(f"replay from {datetime.datetime.fromtimestamp(ts / 1000):%H:%M:%S} at {speed}x", flush=True)
+                due = started + (ts - first) / 1000 / speed
+                while not stop.is_set() and time.time() < due:
+                    time.sleep(min(0.05, due - time.time()))
+            apply_line(line.rstrip("\n"), state)
+    print("replay finished", flush=True)
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--log", type=Path, help="probe log to follow, or a directory of them")
@@ -1271,6 +1308,9 @@ def main(argv=None) -> int:
     parser.add_argument("--check", action="store_true", help="run the self-check and exit")
     parser.add_argument("--auto-capture", action="store_true",
                         help="start the join-probe capture whenever the game runs and no capture does")
+    parser.add_argument("--replay", action="store_true", help="feed --log at wall-clock pace instead of tailing it")
+    parser.add_argument("--speed", type=float, default=1.0, help="replay speed factor")
+    parser.add_argument("--replay-from", help="replay: local time HH:MM:SS to jump to first")
     args = parser.parse_args(argv)
     if args.check:
         return self_check()
@@ -1278,7 +1318,10 @@ def main(argv=None) -> int:
         parser.error("--log or --check is required")
     state = LiveState()
     stop = threading.Event()
-    threading.Thread(target=tail, args=(args.log, state, stop), daemon=True).start()
+    if args.replay:
+        threading.Thread(target=replay, args=(args.log, state, stop, args.speed, args.replay_from), daemon=True).start()
+    else:
+        threading.Thread(target=tail, args=(args.log, state, stop), daemon=True).start()
     capture = Capture()
     if args.auto_capture:
         capture.watch()
