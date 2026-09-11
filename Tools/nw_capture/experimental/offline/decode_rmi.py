@@ -166,6 +166,33 @@ def parse_warboard_manifest(payload: bytes):
     return teams
 
 
+def parse_warboard_manifest_delta(payload: bytes):
+    """WarboardComponentClientFacet_OnUpdateWarboardManifest (2968): u16 version, then per team u16
+    added count, added x (05 + uuid), added x u8 index, u16 removed count (removed entries unread).
+    Returns {uuid: (team, index)} for the added players."""
+    out, index, team = {}, 18, 0
+    while index + 2 <= len(payload):
+        count = struct.unpack(">H", payload[index:index + 2])[0]
+        index += 2
+        if index + count * 17 + count + 2 > len(payload):
+            return out
+        uuids = []
+        for _ in range(count):
+            if payload[index] != 0x05:
+                return out
+            uuids.append(payload[index + 1:index + 17].hex())
+            index += 17
+        for uuid_hex, slot in zip(uuids, payload[index:index + count]):
+            out[uuid_hex] = (team, slot)
+        index += count
+        removed = struct.unpack(">H", payload[index:index + 2])[0]
+        index += 2
+        if removed:
+            return out       # NOTE: no removal seen in the logs yet; stop rather than guess its shape
+        team += 1
+    return out
+
+
 def samples(lines):
     for line in lines:
         if '"rmi_samples"' not in line:
@@ -229,6 +256,10 @@ def check():
     who = player_uuid_name(bytes.fromhex("06c12430316130393230362d303064632d373261302d393732332d61356539666638373339366118d45c26ba773cccf90bb10f57680168eb0000bf80"
         "0000000000000000000002018f053d318010b4164b0b8bf76ee252186d6d0850657461576174740586ae8332ed32420e985c61011022847a0103011000015d1be4a201"))
     assert who == ("3d318010b4164b0b8bf76ee252186d6d", "PetaWatt"), who
+    added = parse_warboard_manifest_delta(bytes.fromhex("cb094e95df9b24169d593e64310f6d6e" "000800000000000105eedcb69e5ad449788a9fb717d1896958030000"))
+    assert added == {"eedcb69e5ad449788a9fb717d1896958": (1, 3)}, added
+    added = parse_warboard_manifest_delta(bytes.fromhex("cb094e95df9b24169d593e64310f6d6e" "00070001053d318010b4164b0b8bf76ee252186d6d03000000000000"))
+    assert added == {"3d318010b4164b0b8bf76ee252186d6d": (0, 3)}, added
     print("decode_rmi check ok")
 
 
