@@ -21,7 +21,9 @@ import argparse
 import json
 import math
 import os
+import signal
 import struct
+import subprocess
 import sys
 import threading
 import time
@@ -530,7 +532,57 @@ def tail(path: Path, state: LiveState, stop: threading.Event, poll: float = 0.2)
         time.sleep(poll)
 
 
-def make_handler(state: LiveState):
+class Capture:
+    """Start and stop the join-probe capture from the page.
+
+    The child gets SIGINT back to default (a shell background job leaves it ignored, which is why a
+    capture started that way could not be stopped early), so stop is a SIGINT that the runner turns
+    into a clean detach. The capture lock and the stale-agent check stay in nw_capture_probe.py.
+    """
+    PROBE = HERE / "nw_join_probe.js"
+    RUNNER = HERE / "nw_capture_probe.py"
+    LOCK = Path(os.environ.get("NW_CAPTURE_LOCK", "/tmp/nw-capture.lock"))
+
+    def __init__(self) -> None:
+        self.process: subprocess.Popen | None = None
+        self.started_at: float | None = None
+        self.seconds = 0
+        self.log = open("/dev/null", "w")
+
+    def status(self) -> dict:
+        running = self.process is not None and self.process.poll() is None
+        if self.process is not None and not running:
+            self.exit_code = self.process.returncode
+            self.process = None
+        try:
+            owner = self.LOCK.read_text().strip()
+        except OSError:
+            owner = ""
+        return {"running": running, "since": self.started_at if running else None, "seconds": self.seconds,
+                "lock": owner, "exit_code": getattr(self, "exit_code", None)}
+
+    def start(self, seconds: int) -> dict:
+        if self.status()["running"]:
+            return {"error": "a capture started from here is already running"}
+        seconds = max(30, min(int(seconds), 4 * 3600))
+        out = Path("/tmp/nwc"); out.mkdir(parents=True, exist_ok=True)
+        self.log = open(out / "live_capture.out", "w")
+        self.process = subprocess.Popen(
+            [sys.executable, str(self.RUNNER), "--probe", str(self.PROBE), "--seconds", str(seconds),
+             "--label", "live", "--wait", "30"],
+            cwd=str(HERE.parents[2]), stdout=self.log, stderr=subprocess.STDOUT,
+            start_new_session=True, preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_DFL))
+        self.started_at, self.seconds = time.time(), seconds
+        return self.status()
+
+    def stop(self) -> dict:
+        if not self.status()["running"]:
+            return {"error": "no capture started from here is running", **self.status()}
+        self.process.send_signal(signal.SIGINT)      # the runner's KeyboardInterrupt path: clean detach
+        return self.status()
+
+
+def make_handler(state: LiveState, capture: Capture | None = None):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):    # quiet
             pass
@@ -557,6 +609,11 @@ def make_handler(state: LiveState):
                     self._answer({"error": "pass key= or name="})
             elif self.path.startswith("/reset"):
                 self._answer(state.reset())
+            elif self.path.startswith("/capture/start") and capture is not None:
+                query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+                self._answer(capture.start(int(query.get("seconds", ["1800"])[0])))
+            elif self.path.startswith("/capture/stop") and capture is not None:
+                self._answer(capture.stop())
             elif self.path.startswith("/calibrate"):
                 state.start_calibration(3.0)
                 time.sleep(3.2)
@@ -573,7 +630,10 @@ def make_handler(state: LiveState):
             if self.path.startswith("/state"):
                 # allow_nan=False: a non-finite number would make the browser's JSON.parse fail, which
                 # is exactly what showed up as "cannot reach the server" in the page.
-                body = json.dumps(state.snapshot(), allow_nan=False).encode()
+                snapshot = state.snapshot()
+                if capture is not None:
+                    snapshot["capture"] = capture.status()
+                body = json.dumps(snapshot, allow_nan=False).encode()
                 ctype = "application/json"
             elif self.path in ("/", "/index.html"):
                 body = HERE_PAGE.read_bytes()
@@ -868,7 +928,7 @@ def main(argv=None) -> int:
     state = LiveState()
     stop = threading.Event()
     threading.Thread(target=tail, args=(args.log, state, stop), daemon=True).start()
-    server = ThreadingHTTPServer((args.host, args.port), make_handler(state))
+    server = ThreadingHTTPServer((args.host, args.port), make_handler(state, Capture()))
     print(f"following {args.log}")
     print(f"open http://{args.host}:{args.port}/   (state: /state)")
     try:

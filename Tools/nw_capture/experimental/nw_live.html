@@ -104,6 +104,7 @@
     <button id="identify" title="watch which entity moves while you walk">identify (walk 3 s)</button>
     <button id="others" class="on" title="show unnamed entities">others</button>
     <button id="reset" title="forget every entity and trail (a new game session reuses the keys)">reset</button>
+    <button id="capture" title="start or stop the join-probe capture (30 min)">capture</button>
   </div>
   <div class="card" id="feed"></div>
   <div class="card" id="hud">
@@ -337,6 +338,10 @@ $("reset").onclick = async () => {
   try { await fetch("/reset", { method: "POST" }); } catch (error) {}
   trails.clear(); objects = {}; focused = ""; render();
 };
+$("capture").onclick = async () => {
+  const running = $("capture").classList.contains("on");
+  try { await fetch(running ? "/capture/stop" : "/capture/start?seconds=1800", { method: "POST" }); } catch (error) {}
+};
 $("drawerToggle").onclick = () => $("aside").classList.toggle("closed");
 $("identify").onclick = async e => {
   e.target.disabled = true; e.target.textContent = "walk now...";
@@ -378,9 +383,13 @@ function render(snapshot) {
       const who = f.key === selected ? "you" : (f.name || f.key), age = Math.max(0, snapshot.now - f.at);
       return `<div><span>${who}</span><b class="${f.delta < 0 ? "hit" : "heal"}">${f.delta > 0 ? "+" : ""}${f.delta}</b><span class="dim">${age.toFixed(0)}s</span></div>`;
     }).join("") : '<span class="dim">damage feed: no health change yet</span>';
-    const age = snapshot.last_line_age_s, status = $("statusText");
-    status.textContent = age == null ? "no data yet" : (age > 5 ? `no capture running, last line ${age}s ago` : `live, ${age}s`);
+    const age = snapshot.last_line_age_s, status = $("statusText"), cap = snapshot.capture || {};
+    const capText = cap.running ? `capture ${Math.round(snapshot.now - cap.since)}s / ${cap.seconds}s` : (cap.lock ? `capture held elsewhere: ${cap.lock}` : "no capture");
+    status.textContent = (age == null ? "no data yet" : (age > 5 ? `stale, last line ${age}s ago` : `live, ${age}s`)) + " · " + capText;
     status.className = age == null || age > 5 ? "warn" : "";
+    $("capture").textContent = cap.running ? "stop capture" : "start capture";
+    $("capture").classList.toggle("on", !!cap.running);
+    $("capture").disabled = !cap.running && !!cap.lock;
   }
   const me = objects[selected] || {};
   const shown = focused && focused !== selected ? (objects[focused] || {}) : me;
