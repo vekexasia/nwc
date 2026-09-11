@@ -37,7 +37,8 @@
   #feed div { display: flex; justify-content: space-between; gap: 10px; }
   #feed b { font-family: var(--mono); font-weight: normal; }
   #feed .hit { color: var(--me); } #feed .heal { color: var(--ok); }
-  #tools { top: 12px; right: 12px; display: flex; gap: 6px; padding: 6px; }
+  #tools { top: 12px; right: 12px; display: flex; gap: 6px; padding: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  #tools button { white-space: nowrap; }
   h1 { font-size: 15px; margin: 0 0 4px; font-weight: 600; letter-spacing: 0.02em; }
   h1 small { font-weight: normal; color: var(--ink-soft); font-size: 12px; margin-left: 6px; }
   .bar { margin: 6px 0; font-size: 12px; }
@@ -363,7 +364,7 @@ $("identify").onclick = async e => {
 function poseText(slot) {           // layer 0 is locomotion, layer 1 the weapon; idle alone says nothing worth ink
   const p = slot.pose || {}, parts = [];
   if (slot.stance && slot.stance !== "standing") parts.push(slot.stance);
-  if (slot.interacting) parts.push("gathering");
+  if (slot.interacting && !slot.mounted) parts.push("interacting");   // Interact 01 01 01 also covers riding, so only on foot
   if (slot.mounted && !slot.npc) parts.push(slot.mount_name ? `on ${slot.mount_name}` : "mounted");
   if (p["0"] && p["0"] !== "idle") parts.push(p["0"]);
   if (p["1"] && p["1"] !== "weapon out") parts.push(p["1"]); else if (p["1"] === "weapon out" && !parts.length) parts.push("weapon out");

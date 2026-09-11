@@ -314,8 +314,8 @@ class LiveState:
             self._slot(key)["npc"] = not player
 
     def interacting(self, key: str, active: bool) -> None:
-        """InteractReplicatedState (2930) `01 01 01` while an entity gathers/interacts, `01 01 00` after:
-        a bot stood gathering for an hour with the flag at 1 and no slayer transition at all."""
+        """InteractReplicatedState (2930) `01 01 01` while an entity is in an interaction (gathering, and
+        riding counts too), `01 01 00` after: a bot stood gathering for an hour with the flag at 1."""
         with self.lock:
             self._slot(key)["interacting"] = active
 
