@@ -516,3 +516,33 @@ mount).
 Operational: a background capture ignores SIGINT (shell background jobs), so a running capture cannot
 be stopped early without orphaning the Frida agent; wait for its timeout or restart the game. `pkill
 -f` with a pattern that appears in the calling command line kills the caller: bracket one character.
+
+## Update 2026-09-11 (night): the name book, and the wire ids are crc32 of the datasheet ids
+
+The big unlock of the day: **every opaque u32 id on the wire is the CRC32 of the lowercase datasheet id
+string.** All seven cooldown ids resolved to weapon abilities on the first try (`Ability_VoidGauntlet_Scream`
+= `9d35d4b6`), then mounts (`Mount_MTX_bear_Panda`), equipped perks (AbilityComponent 185), items worn
+(Paperdoll 3183: `2hGreatAxeLostT5` = Forsaken Great Axe), status effects (4236: Miner's Resolve),
+and the vitals row of every mob (Vitals full state: Black Boar, Grey Wolf, Withered Punisher).
+
+Tools, all under `Tools/nw_assets/`:
+- `pak_extract.py`: list/extract entries of the game's .pak (zip; method 15 = Oodle). The Oodle
+  decompressor is third-party and lives in `private/tools/oodle/liboo2corelinux64.so.9` (gitignored).
+- `datasheet.py`: the binary datasheet reader (new-world-tools layout), checked on mounttypes.
+- `namebook.py build`: extracts the 2,250 datatables (215 MB) and the 184 English localization files
+  into `private/assets/`, writes `private/assets/namebook.json`: 265,451 ids, 102,479 with English text.
+  `namebook.py lookup HEX...` resolves ids. `nw_live.py` loads the book at start; a 4-byte window scan
+  filtered by sheet is how Paperdoll/StatusEffects/Vitals ids are read today (no field tables yet).
+
+Also decoded today, all in the live view: stamina (4297), cooldowns (2932), mount (5620, driven),
+level (899), faction (3152: 1 Syndicate, 2 Marauders, 3 Covenant per javelindata_factiondata), mana
+(1652), player vs companion (Vitals member 0 bit 1), stance byte (ALC group0.bit43), facing (ALC
+rotation quaternion), static positions (13) for camps and nodes, Interact flag (2930). Captures start
+and stop from the page (`/capture/start`, `/capture/stop`, SIGINT restored in the child).
+
+What did not fall: the numeric slayer state ids (pose) have no table in binary or assets
+(`docs/Network/pose-state-names.md`, a subagent's full pass); the mapping is runtime-generated. The
+driven table in `pose-state.md` and the player's own reports from the page remain the way.
+
+Encoders proven byte-exact: ALC payload (`encode_alc_state.py`), record and frame
+(`encode_record.py`, 9,365 frames). Next on the replica path: Carrier and DTLS.
