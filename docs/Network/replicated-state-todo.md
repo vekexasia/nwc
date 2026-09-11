@@ -31,20 +31,39 @@ Sources, both gitignored under `private/open-world-discord/attachments/`:
 
 The registry addresses apply to our build: typeIndex 11 `Unmarshal` is `NewWorld+0x2a327f0`, the
 address our own static analysis names `FUN_142a327f0`
-([alc-static-analysis.md](alc-static-analysis.md):50). Checked on ALC only.
+([alc-static-analysis.md](alc-static-analysis.md):50). Checked on ALC only - and see the trap in
+"Traps" below before using that column.
 
 ## Status
 
 | State | typeIndex | Status in this repo |
 |---|---:|---|
 | `ALCReplicatedState` | 11 | Decoded and verified: group-aware record payload, 1..9-byte mask reader, 48-property schema, `worldPosAbs`/`worldPosRel`, axis assignment cross-checked against 55739 community markers ([alc-protocol-reference.md](alc-protocol-reference.md), [decoder-state.md](decoder-state.md)) |
-| `VitalsComponentReplicatedState` | 15 | Static 19-field table recovered, including codec readers and scalar widths; no type-15 payload in our capture yet ([health-field.md](health-field.md)) |
+| `VitalsComponentReplicatedState` | 15 | **Health decoded from live payloads and validated** against the game's own numbers; the payload carries several opcodes with their own masks, so the remaining fields are mapped one opcode at a time ([decoder-state.md](decoder-state.md), [health-field.md](health-field.md)) |
 | `PlayerComponentReplicatedState` | 3935 | Registry identity and one community reference body, no field map of our own. See below |
 | everything else | - | Not started |
 
 Open items on ALC itself, not new states: local-player identity and ownership, rotation/look
 direction semantics, group-1 entries beyond bit 0, the quantised elevation mapping, and the
 semantics of the ~14 unobserved fields ([decoder-state.md](decoder-state.md)).
+
+### Vitals: what is decoded, and what the payload looks like
+
+`HealthAmount` is mask bit 0 of an opcode-`0x01` payload, a big-endian float32, and the decoded
+deltas match the numbers the game prints on screen (a `+57` heal and a `362` drain on the player's
+own object, later a right-mouse drain falling in 260.8 steps). Read it with
+`Tools/nw_capture/experimental/offline/decode_vitals.py --log <log> [--object <addr>]` (self-check:
+`--check`).
+
+```text
+01 01 46 1b 88 f3      opcode 01, mask 01: health 9954.2
+01 09 46 17 75 cb 03   opcode 01, mask 09: health + one 1-byte field
+08 02 01 00 08 37 ...  opcode 08, mask 02
+02 01 01 01 02 40 ...  opcode 02
+```
+
+The other 18 fields of the static table are not mapped to opcode+bit yet, and the reader's third
+stage (a delta list, varint plus member vtable `+0x50`) is unexplored.
 
 ### PlayerComponentReplicatedState: what we have
 
@@ -74,6 +93,35 @@ Discord, on this state: it is the spawn `create` member and carries the characte
 bundle header, **not** inside PlayerComponent; sending it alone fails to parse the bundle
 (`ask-a-question.md:550`); the local-ownership/primary flag is separate and was still unresolved there.
 
+## How a state is read now (the working loop)
+
+1. **Probe**: hook the client-side reader of the state, not the registry handler. Record, per call,
+   the object pointer, the bytes consumed and the payload (`nw_state_probe.js` does this for the
+   Vitals path, with the `worldPosAbs` reader as a control; `decode_alc_state.py` covers ALC from a
+   ledger).
+2. **Capture**: `nw_capture_probe.py --probe <abs path> --seconds N`. Captures need **no focus and no
+   input**; a five second capture already gives hundreds of state reads over dozens of entities.
+   Injecting input is the only part that needs the focused window (`nw_vmouse.py --focus --restore`),
+   and `capture_lock.py` makes sure two captures never overlap.
+3. **Decode**: `decode_vitals.py` / `decode_alc_state.py` turn a log into values.
+4. **Validate by behaviour, not by plausibility**: drive one action and check the value against the
+   game's own output (the on-screen damage numbers for health, the jump arc for `distGround`, the
+   dodge for `segmentedStamina`). A float that merely looks plausible is not evidence.
+
+`nw_actions.py` plays a timed sequence (sprint, stand, casts, right-mouse self-drain) and writes a
+timeline, so a capture can be read per phase; that is how the player's own Vitals object is
+identified (the object whose health falls during the drain is the local player).
+
+## Traps that cost real time
+
+- The registry `Unmarshal` column is **not** what the client calls to read a state: hooking those
+  addresses fires zero times while the state is clearly being decoded. Hook the reader path itself.
+- Addresses from Ghidra listings are **absolute**; a probe wants **RVAs** (`absolute - 0x140000000`).
+  Passing an absolute address as an RVA gives an access violation and kills the whole hook install.
+- Do not locate records by matching short byte windows: two attempts locked onto a periodic 166-byte
+  heartbeat with an incrementing counter and produced plausible nonsense. Prefer a reader whose
+  cursor delta gives the length directly.
+
 ## TODO, in order
 
 Tier 1 - self and rendering. Closes the "which record is me" gap and what the player looks like.
@@ -89,7 +137,7 @@ Tier 2 - player numbers, for a marker readout.
 
 | State | typeIndex | Why |
 |---|---:|---|
-| `VitalsComponentReplicatedState` | 15 | Static HP/max/rate codec map recovered; live type-15 payload and semantics remain open ([health-field.md](health-field.md)) |
+| `VitalsComponentReplicatedState` | 15 | Health done; stamina, mana, the tick rates and `HealthMax` need their opcode+bit, and the delta stage is unexplored |
 | `AttributeComponentReplicatedState` | 129 | attributes |
 | `StatMultiplierTableComponentReplicatedState` | 1525 | stat multipliers |
 
@@ -112,6 +160,16 @@ Never seen in the community corpus, so there is no reference body to check a rea
 (2164), `NotificationServiceComponent` (3340), `TestTransactorComponent` (4263),
 `ClientPathingComponent` (5915), `TransformLinkComponent` (5980).
 
+## Infrastructure, not a state
+
+- **Record-length oracle.** The record layer has no length field, so walking a body past a record of
+  an unknown type needs its payload length. With the length of every type, old captures (and the
+  community corpus) become decodable offline, with no game, no probe and no focus. The reader-hook
+  route that worked for Vitals gives exact lengths, so this is reachable one state at a time;
+  `record_lengths.py` exists but its window matching is unreliable.
+- **Live reader.** The probe appends to its log every 500 ms, so a tailing decoder can print the
+  player's position and health as they change, and feed `nw_map_trail.js` for a moving trail.
+
 ## Recipe for one state
 
 The path already walked for ALC, reuse it instead of re-deriving ([alc-static-analysis.md](alc-static-analysis.md),
@@ -124,6 +182,9 @@ The path already walked for ALC, reuse it instead of re-deriving ([alc-static-an
 3. Reader -> wire width and field order; check the consumed widths against a real body.
 4. Confirm the whole member consumes exactly, inside the bundle, before naming anything as a value.
 
+Then hook the client-side reader (see "How a state is read now") and validate each field by driving
+an action, because the property table alone does not say which bit or opcode carries which field.
+
 Before decoding a state, check the capture actually contains it: our Test teleport ledger resolves
 only type reference 11, so a new state needs a capture where its `typeIndex` is present
 ([offline-framing-findings.md](offline-framing-findings.md):382,
@@ -134,4 +195,7 @@ only type reference 11, so a new state needs a capture where its `typeIndex` is 
 - The 13 never-seen states have no reference body; skip until one appears in a capture.
 - Do not present a decoded field as a coordinate, a self-identity or a trail without the checks in
   [live-position-map-feasibility.md](live-position-map-feasibility.md).
-- Not the channel-0 typed message catalog (3487 entries); that is a separate list.
+- Not the channel-0 typed message catalog (3487 entries); that is a separate list. It does hold the
+  damage/heal event messages (`VitalsComponentClientFacet_OnDamage` is `type_idx` 3601,
+  `DamageReceiverComponentClientFacet_OnDamageDealt` is 2071), so if a combat log is ever wanted,
+  that is where to start.
