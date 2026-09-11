@@ -432,3 +432,34 @@ of every `NewWorld.exe` host process, and if a `frida-agent` mapping is there (w
 held, so no other capture can be the owner) it prints the host pid, the reason and the fix, and exits
 with code 3. The check is exercised by every capture and does not match its own command line, because
 it matches on the process name rather than on a command-line pattern.
+
+## Update 2026-09-11: the entity join is done, V1 is the entity and V1 = 1 is the player
+
+The "record join" blocked above is resolved, by reading the record reader instead of guessing the
+cursor offset: `FUN_146af20d0` reads V1 into a u16 out parameter (args[1]), a u8 chunk count (the old
+"constant 0x01") and then `FUN_146af2340` per chunk (V2, type reference, factory, unmarshal, push
+`{V2, object}`). The varint primitives return their value behind **args[2]**; the failed attempt read
+args[0]. Reference: `docs/Network/entity-join.md`.
+
+Verified live (three 40 s captures and one 4 s driven walk): V1 groups ALC, Vitals, DamageReceiver,
+Paperdoll and the rest of one entity, with coherent tracks and plausible health; V2 is the chunk slot;
+the object pointer on the vector is transient and never was an entity key; **the entity that moved
+only during the injected walk is V1 = 1**, which is also the first record of every body in all four
+captures and the only entity with the owner-only states. Every ALC payload decodes exactly against the
+chunk length measured by the hook, and that measurement gives the payload length of every type
+(record-length oracle) for free.
+
+Tools: `Tools/nw_capture/experimental/nw_join_probe.js` (emits `join_samples` plus the `pos_samples`,
+`vitals_samples` and `player_samples` shapes `nw_live.py` already reads, keyed `e<V1>`), and
+`Tools/nw_capture/experimental/offline/decode_join.py` (`--check` passes). With the join probe as the
+running capture, the existing live page showed `e158 "Where Arda" health 18708 + position` and
+`e220 "Vadi G"` joined, and `e1` as the player, with no change to `nw_live.py`.
+
+Coordination note: two agents worked on this tree today. `nw_capture_probe.py` now kills leftover
+frida-servers only after taking the capture lock (a leftover found before the lock was the other
+capture's live server). Captures serialise on `/tmp/nw-capture.lock`; wait for it, do not clear it.
+
+Next, in order: (1) make the live view default "me" to `e1` and keep the V1 -> name map for the
+session (names arrive once, at scope entry); (2) hook the `slayer*` field readers with the same
+per-thread V1 tag and drive known actions to build the `slayerStateId -> action` table (pose);
+(3) the ALC encoder with a decode -> encode -> identical-bytes round trip over the captured chunks.
