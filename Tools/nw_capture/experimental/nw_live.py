@@ -37,6 +37,7 @@ sys.path.insert(0, str(HERE / "offline"))
 from decode_cooldowns import parse_cooldowns  # noqa: E402
 from decode_mount import parse_mount  # noqa: E402
 from decode_pose import pose_from_payload  # noqa: E402
+from decode_rmi import parse_chat, parse_chat_batch  # noqa: E402
 from decode_stamina import parse_stamina  # noqa: E402
 from decode_vitals import parse_full_state, parse_members  # noqa: E402  the shared, verified payload model
 
@@ -123,6 +124,7 @@ class LiveState:
             except Exception:
                 pass
         self.feed: list[dict] = []      # health changes, newest last: the damage feed
+        self.chat_log: list[dict] = []  # ChatComponent RMIs, newest last
         self.calibration: dict | None = None   # {"until": ts, "started": ts, "moved": {key: distance}}
         self.counters = {"position": 0, "health": 0, "mana": 0, "player": 0, "lines": 0, "skipped": 0}
         self.started = time.time()
@@ -216,6 +218,7 @@ class LiveState:
             dropped = len(self.objects)
             self.objects.clear()
             self.feed.clear()
+            self.chat_log.clear()
             self.calibration = None
             return {"dropped": dropped}
 
@@ -361,6 +364,11 @@ class LiveState:
                 slot.pop("mount_name", None)      # "on X" only while riding
             slot["mount_at"] = time.time()
 
+    def chat(self, message: dict) -> None:
+        with self.lock:
+            self.chat_log.append({"at": time.time(), **message})
+            del self.chat_log[:-60]
+
     def cooldowns(self, key: str, entries: list) -> None:
         """CooldownTimersComponentReplicatedState deltas: one (id, start, expiry) per slot."""
         with self.lock:
@@ -480,6 +488,7 @@ class LiveState:
                 "calibrating": self.calibration is not None and time.time() < self.calibration["until"],
                 "objects": {k: v for k, v in sorted(self.objects.items())},
                 "feed": self.feed[-30:],
+                "chat": self.chat_log[-30:],
             }
 
 
@@ -572,6 +581,17 @@ def apply_line(line: str, state: LiveState) -> None:
                     state.tags(f"e{item[1]}", "effects", effects, keep=12)
             elif item[3] == 2930 and item[5] == 3 and item[6][:4] == "0101":
                 state.interacting(f"e{item[1]}", item[6][4:6] == "01")
+    elif kind == "rmi_samples":       # typed messages: chat for now, the rest is listed by decode_rmi.py
+        for item in items:
+            if len(item) < 3 or not item[2]:
+                continue
+            if item[1] == 4118:
+                message = parse_chat(bytes.fromhex(item[2]))
+                if message:
+                    state.chat(message)
+            elif item[1] == 293:
+                for message in parse_chat_batch(bytes.fromhex(item[2])):
+                    state.chat(message)
     elif kind == "vitals_samples":
         for item in items:
             if len(item) < 3:
@@ -901,6 +921,14 @@ def self_check() -> int:
         assert e41["static"] is True and e41["gatherable"] is True and abs(e41["position"]["x"] - 8876.7) < 0.1, e41
         state15.position("e41", {"x": 8880.0, "y": 4180.0, "elev_raw": 0, "elevation": 0.0})
         assert state15.objects["e41"]["static"] is False and state15.objects["e41"]["position"]["x"] == 8880.0
+
+        # chat RMIs land in the chat log
+        state17 = LiveState()
+        state17.me_path = Path(tmp) / "me17.json"; state17.max_path = Path(tmp) / "max17.json"; state17.maxima = {}
+        apply_line(json.dumps({"type": "rmi_samples", "items": [[1, 4118,
+            "515ac85acc363edc31df13d046e908f82433643331383031302d623431362d346230622d386266372d366565323532313836643664"
+            "085065746157617474020000000000046369616f00000000000000000000011137363536313139393532323337343831380103"]]}), state17)
+        assert state17.snapshot()["chat"][0]["text"] == "ciao" and state17.snapshot()["chat"][0]["name"] == "PetaWatt", state17.chat_log
 
         # every health change is a feed entry with its delta
         state14 = LiveState()
