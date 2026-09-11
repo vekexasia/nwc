@@ -698,9 +698,13 @@ def apply_line(line: str, state: LiveState) -> None:
                 # ClientSyncDeathRecap: u8 length, the killer's vitals name key, u32, u16, f32 last hit, f32 max health
                 raw = bytes.fromhex(item[2])[16:]
                 length = raw[0]
-                if 1 + length + 14 <= len(raw):
+                index = 1 + length
+                # a player killer carries the character name, then 24 + the uuid string (OPR 21:58, "quaateme")
+                if index < len(raw) and raw[index] == 0x24:
+                    index += 37
+                if index + 14 <= len(raw):
                     killer = loc_text(raw[1:1 + length].decode("ascii", "replace"))
-                    last_hit, health_max = struct.unpack(">ff", raw[1 + length + 6:1 + length + 14])
+                    last_hit, health_max = struct.unpack(">ff", raw[index + 6:index + 14])
                     state.hit({"key": "death", "name": f"killed by {killer}", "delta": -round(last_hit),
                                "types": [f"max {health_max:.0f}"]})
             elif item[1] == 3601:
@@ -1072,6 +1076,9 @@ def self_check() -> int:
             "fc65cc3aebb909fc31df13d046e908f81d40496e766173696f6e5f53706561726d616e5f566974616c734e616d6500000000000043808000461054000000003f800000"]]}), state17)
         assert state17.snapshot()["targeted_by"] == ["e120"], state17.snapshot()["targeted_by"]
         assert state17.feed[-1]["delta"] == -257 and state17.feed[-1]["name"].startswith("killed by "), state17.feed[-1]
+        apply_line(json.dumps({"type": "rmi_samples", "items": [[6, 4299, "fc65cc3aebb909fc31df13d046e908f8"
+            "087175616174656d652436633665626266612d353136372d346364332d393633612d613861333539353365333735000000000043da0000461054000000003f800000"]]}), state17)
+        assert state17.feed[-1]["delta"] == -436 and state17.feed[-1]["name"] == "killed by quaateme", state17.feed[-1]
         apply_line(json.dumps({"type": "rmi_samples", "items": [[7, 3916, "83e6e5da016686d031df13d046e908f8990779b848b78ee4"]]}), state17)
         assert state17.snapshot()["targeted_by"] == []
         # PlayerComponent gives uuid + name; the warboard manifest gives the team
