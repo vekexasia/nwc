@@ -326,6 +326,7 @@ def self_check() -> int:
         assert abs(state.snapshot()["objects"]["0xabc"]["mana"] - 64.1) < 0.1, state.snapshot()
         # calibration: the object that walks is the one that moved most, and the margin is reported
         state2 = LiveState()
+        state2.me_path = Path(tmp) / "me.json"    # never overwrite the real identification
         state2.start_calibration(10.0)
         state2.position("0xwalker", {"x": 100.0, "y": 100.0, "elev_raw": 1})
         state2.position("0xidle", {"x": 500.0, "y": 500.0, "elev_raw": 1})
