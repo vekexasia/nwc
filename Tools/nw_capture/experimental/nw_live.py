@@ -38,7 +38,8 @@ sys.path.insert(0, str(HERE / "offline"))
 from decode_cooldowns import parse_cooldowns  # noqa: E402
 from decode_mount import parse_mount  # noqa: E402
 from decode_pose import pose_from_payload  # noqa: E402
-from decode_rmi import DAMAGE_TYPES, parse_chat, parse_chat_batch, parse_damage_dealt, parse_damage_taken  # noqa: E402
+from decode_rmi import (DAMAGE_TYPES, parse_chat, parse_chat_batch, parse_damage_dealt, parse_damage_taken,  # noqa: E402
+                        parse_warboard_manifest, player_uuid_name)
 from decode_stamina import parse_stamina  # noqa: E402
 from decode_vitals import parse_full_state, parse_members  # noqa: E402  the shared, verified payload model
 
@@ -119,6 +120,7 @@ class LiveState:
         self.self_uuid: str | None = None   # PlayerManagerSelfIdentificationMsg: the character uuid
         self.net_ids: dict[str, str] = {}   # OnDamageDealt target id (u64 hex) -> entity key, learned from health deltas
         self.targeted_by: dict[str, float] = {}   # AITargetable OnSelectedAsTarget ids (u64 hex) -> at
+        self.teams: dict[str, int] = {}     # warboard manifest: character uuid -> team index (Outpost Rush)
         self.pending_dealt: list[tuple[float, float, str]] = []   # (at, amount, target id) awaiting a matching delta
 
         self.history: dict[str, list[tuple[float, float, float]]] = {}
@@ -398,6 +400,18 @@ class LiveState:
                 self.pending_dealt.append((time.time(), -entry["delta"], entry["target"]))
                 del self.pending_dealt[:-20]
 
+    def identity(self, key: str, uuid_hex: str, name: str) -> None:
+        """PlayerComponent: the character uuid and name of a player entity (e1 included)."""
+        with self.lock:
+            slot = self._slot(key)
+            slot["uuid"] = uuid_hex
+            slot["name"] = name
+            slot["npc"] = False
+
+    def set_teams(self, teams: dict) -> None:
+        with self.lock:
+            self.teams = dict(teams)
+
     def targeted(self, net_id: str, selected: bool) -> None:
         with self.lock:
             if selected:
@@ -537,7 +551,9 @@ class LiveState:
                 "auto": dict(self.auto_debug),
                 # inside the lock already: calibration_active() would take it again
                 "calibrating": self.calibration is not None and time.time() < self.calibration["until"],
-                "objects": {k: v for k, v in sorted(self.objects.items())},
+                "objects": {k: ({**v, "team": self.teams[v["uuid"]]} if self.teams and v.get("uuid") in self.teams else v)
+                            for k, v in sorted(self.objects.items())},
+                "my_team": self.teams.get(self.objects.get("e1", {}).get("uuid", "")) if self.teams else None,
                 # the player's own lines survive the flood of other mobs' health deltas
                 "feed": [self._with_target(f) for f in sorted(
                     [f for f in self.feed if f["key"] in ("e1", "dealt", "death")][-20:]
@@ -572,7 +588,11 @@ def apply_line(line: str, state: LiveState) -> None:
         for item in items:
             if len(item) < 7 or len(item[6]) != 2 * item[5]:
                 continue
-            if item[3] == 11:
+            if item[3] == 3935 and item[5] > 40:
+                who = player_uuid_name(bytes.fromhex(item[6]))
+                if who:
+                    state.identity(f"e{item[1]}", *who)
+            elif item[3] == 11:
                 # only records that carry a state id; the position of the same record is in pos_samples
                 if (decoded := pose_from_payload(bytes.fromhex(item[6]))):
                     state.pose(f"e{item[1]}", decoded)
@@ -659,6 +679,10 @@ def apply_line(line: str, state: LiveState) -> None:
                     state.chat(message)
             elif item[1] == 1628 and len(item[2]) >= 34:
                 state.self_uuid = str(uuid.UUID(hex=item[2][2:34]))
+            elif item[1] == 3530 and len(item[2]) >= 40:
+                teams = parse_warboard_manifest(bytes.fromhex(item[2]))
+                if teams:
+                    state.set_teams(teams)
             elif item[1] in (2415, 3916) and len(item[2]) >= 48:
                 state.targeted(item[2][32:48], item[1] == 2415)
             elif item[1] == 4299 and len(item[2]) >= 36:
@@ -1041,6 +1065,17 @@ def self_check() -> int:
         assert state17.feed[-1]["delta"] == -257 and state17.feed[-1]["name"].startswith("killed by "), state17.feed[-1]
         apply_line(json.dumps({"type": "rmi_samples", "items": [[7, 3916, "83e6e5da016686d031df13d046e908f8990779b848b78ee4"]]}), state17)
         assert state17.snapshot()["targeted_by"] == []
+        # PlayerComponent gives uuid + name; the warboard manifest gives the team
+        apply_line(json.dumps({"type": "join_samples", "items": [[8, 1, 70, 3935, "0x0", 127,
+            "06c12430316130393230362d303064632d373261302d393732332d61356539666638373339366118d45c26ba773cccf90bb10f57680168eb0000bf80"
+            "0000000000000000000002018f053d318010b4164b0b8bf76ee252186d6d0850657461576174740586ae8332ed32420e985c61011022847a0103011000015d1be4a201"]]}), state17)
+        apply_line(json.dumps({"type": "rmi_samples", "items": [[9, 3530,
+            "cb094e95df9b24169d593e64310f6d6e000c0007053cb247a9b24145369a2a7873e77293a4051eadaab0f67b4afe9f7d9a992104a8e5"
+            "05b0fa0c407f394377989eed9cf2e45204053d318010b4164b0b8bf76ee252186d6d054ce53b5033bb446abf02235ce4a8a80505d76f9afd38ec48f6ae0a6acc17dc7506"
+            "051d095d67ae1d438c9b865c94c73129bf000102030405060000000505319ba7543e40459386d10a5d138add5c05db28a3a8bddd4882a0f7f01625da4157"
+            "050f981a9106cb4cf786a9943daa1e883305eedcb69e5ad449788a9fb717d1896958059f2261a76e9d4e3cb1e6d0a68a5d937200010203040000"]]}), state17)
+        snap17 = state17.snapshot()
+        assert snap17["objects"]["e1"]["team"] == 0 and snap17["my_team"] == 0 and snap17["objects"]["e1"]["name"] == "PetaWatt", snap17["objects"]["e1"]
 
         # every health change is a feed entry with its delta
         state14 = LiveState()

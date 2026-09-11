@@ -37,6 +37,7 @@
   #feed { right: 12px; bottom: 12px; font-size: 12px; max-height: 40%; overflow: hidden; padding: 6px 10px; min-width: 200px; }
   #feed div { display: flex; justify-content: space-between; gap: 10px; }
   #feed b { font-family: var(--mono); font-weight: normal; }
+  tr.ally td:nth-child(2) { color: #2f7c4b; } tr.enemy td:nth-child(2) { color: #c0392b; }
   #feed .hit { color: var(--me); } #feed .heal { color: var(--ok); } #feed .dealt { color: var(--ink); }
   #feed .chat span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 300px; }
   #feed .chat b { font-family: var(--serif); }
@@ -193,9 +194,16 @@ const toScreen = (px, py) => [canvas.width / 2 + (px - view.centre[0]) * view.sc
                               canvas.height / 2 + (py - view.centre[1]) * view.scale];
 const fromScreen = (sx, sy) => [view.centre[0] + (sx - canvas.width / 2) / view.scale,
                                 view.centre[1] + (sy - canvas.height / 2) / view.scale];
-const kind = key => key === selected ? "me" : (objects[key] && objects[key].npc && objects[key].name ? "animal" : (objects[key] && objects[key].name ? "player" : "other"));
+const kind = key => {
+  if (key === selected) return "me";
+  const o = objects[key] || {};
+  // Outpost Rush: the warboard manifest puts every player in a team; allies blue, the other team red
+  if (o.team != null && snapshotMyTeam != null) return o.team === snapshotMyTeam ? "ally" : "enemy";
+  return o.npc && o.name ? "animal" : (o.name ? "player" : "other");
+};
+let snapshotMyTeam = null;
 const target = () => objects[focused] || objects[selected];
-const colour = { me: "#8c2f2b", player: "#2f4b7c", animal: "#7a5c2e", other: "rgba(138,123,102,0.7)" };
+const colour = { me: "#8c2f2b", player: "#2f4b7c", ally: "#2f7c4b", enemy: "#c0392b", animal: "#7a5c2e", other: "rgba(138,123,102,0.7)" };
 
 function drawTiles() {
   const w = canvas.width, h = canvas.height;
@@ -385,7 +393,7 @@ function bar(prefix, value, key, ceiling) {
 
 function render(snapshot) {
   if (snapshot) {
-    meInfo = snapshot.me || {}; objects = snapshot.objects || {};
+    meInfo = snapshot.me || {}; objects = snapshot.objects || {}; snapshotMyTeam = snapshot.my_team ?? null;
     if (meInfo.object && meInfo.object !== selected) { selected = meInfo.object; if (!focused) setFollow(true); }
     for (const [key, slot] of Object.entries(objects)) {
       if (!slot.position) continue;
@@ -452,7 +460,8 @@ function render(snapshot) {
   $("count").textContent = `${rows.length}`;
   $("rows").innerHTML = rows.map(([key, slot]) => {
     const age = Math.max(slot.position_at || 0, slot.vitals_at || 0), p = slot.position || {};
-    const cls = (key === selected ? "me" : (slot.npc && slot.name ? "animal" : (slot.name ? "named" : ""))) + (key === focused ? " focused" : "") + (stale(key) ? " stale" : "");
+    const cls = (key === selected ? "me" : (slot.npc && slot.name ? "animal" : (slot.name ? "named" : ""))) + (key === focused ? " focused" : "") + (stale(key) ? " stale" : "")
+      + (slot.team != null && snapshotMyTeam != null ? (slot.team === snapshotMyTeam ? " ally" : " enemy") : "");
     return `<tr class="${cls}" data-key="${key}"><td>${key}</td><td title="${(slot.weapons || []).join(", ")}">${slot.name ? (slot.npc ? `<span class="dim">${slot.name}'s ${(slot.vitals_ids || [])[0] || "companion"}</span>` : slot.name) : `<span class="dim">${(slot.vitals_ids || [])[0] || "?"}</span>`}${slot.level ? ` <span class="dim">${slot.level}</span>` : ""}</td><td class="dim">${poseText(slot)}</td>` +
       `<td class="num">${slot.health ?? "-"}</td><td class="num">${p.x ?? "-"}</td><td class="num">${p.y ?? "-"}</td>` +
       `<td class="num">${age ? (now - age).toFixed(0) + "s" : "-"}</td></tr>`;

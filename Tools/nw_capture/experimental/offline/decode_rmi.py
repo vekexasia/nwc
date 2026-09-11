@@ -134,6 +134,38 @@ def parse_damage_dealt(payload: bytes):
             "flags": struct.unpack(">H", payload[48:50])[0], "entries": _entries(payload, 50)}
 
 
+PLAYER_UUID_NAME = re.compile(rb"\x05(.{16})([\x01-\x14])(.{1,20}?)\x05.{16}", re.S)
+
+
+def player_uuid_name(payload: bytes):
+    """PlayerComponentReplicatedState (3935): somewhere in the record `05 <uuid 16> <len> <name> 05 <uuid>`.
+    68 player entities of the OPR log carried it; 60 agreed with the hook's name (the rest were reused indices)."""
+    for match in PLAYER_UUID_NAME.finditer(payload):
+        name = match.group(3)
+        if len(name) == match.group(2)[0] and all(32 <= c < 127 for c in name):
+            return match.group(1).hex(), name.decode()
+    return None
+
+
+def parse_warboard_manifest(payload: bytes):
+    """WarboardComponentClientFacet_OnUpdateFullWarboardManifest (3530): after the facet uuid, u16 version,
+    then per team: u16 count, count x (05 + uuid 16), count x u8 index, u16 0. Returns {uuid: team}."""
+    teams, index, team = {}, 18, 0
+    while index + 2 <= len(payload):
+        count = struct.unpack(">H", payload[index:index + 2])[0]
+        index += 2
+        if index + count * 17 + count + 2 > len(payload):
+            return teams
+        for _ in range(count):
+            if payload[index] != 0x05:
+                return teams
+            teams[payload[index + 1:index + 17].hex()] = team
+            index += 17
+        index += count + 2
+        team += 1
+    return teams
+
+
 def samples(lines):
     for line in lines:
         if '"rmi_samples"' not in line:
@@ -189,6 +221,14 @@ def check():
     tick = parse_damage_dealt(bytes.fromhex("fea3936321dfc8b931df13d046e908f8c45391666544b3fd990779b848b78ee4fdb34465669153c4"
                                             "00000000000000000002010342ab78843f2aec56"))
     assert tick["attack"] == "0" * 16 and tick["entries"][0]["amount"] == 85.7, tick
+    manifest = parse_warboard_manifest(bytes.fromhex("cb094e95df9b24169d593e64310f6d6e000c0007053cb247a9b24145369a2a7873e77293a4051eadaab0f67b4afe9f7d9a992104a8e5"
+        "05b0fa0c407f394377989eed9cf2e45204053d318010b4164b0b8bf76ee252186d6d054ce53b5033bb446abf02235ce4a8a80505d76f9afd38ec48f6ae0a6acc17dc7506"
+        "051d095d67ae1d438c9b865c94c73129bf000102030405060000000505319ba7543e40459386d10a5d138add5c05db28a3a8bddd4882a0f7f01625da4157"
+        "050f981a9106cb4cf786a9943daa1e883305eedcb69e5ad449788a9fb717d1896958059f2261a76e9d4e3cb1e6d0a68a5d937200010203040000"))
+    assert len(manifest) == 12 and manifest["3d318010b4164b0b8bf76ee252186d6d"] == 0 and manifest["db28a3a8bddd4882a0f7f01625da4157"] == 1, manifest
+    who = player_uuid_name(bytes.fromhex("06c12430316130393230362d303064632d373261302d393732332d61356539666638373339366118d45c26ba773cccf90bb10f57680168eb0000bf80"
+        "0000000000000000000002018f053d318010b4164b0b8bf76ee252186d6d0850657461576174740586ae8332ed32420e985c61011022847a0103011000015d1be4a201"))
+    assert who == ("3d318010b4164b0b8bf76ee252186d6d", "PetaWatt"), who
     print("decode_rmi check ok")
 
 
