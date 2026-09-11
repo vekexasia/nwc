@@ -208,7 +208,11 @@ const kind = key => {
   if (o.team != null && snapshotMyTeam != null) return o.team === snapshotMyTeam ? "ally" : "enemy";
   return o.npc && o.name ? "animal" : (o.name ? "player" : "other");
 };
-let snapshotMyTeam = null;
+let snapshotMyTeam = null, lastOpr = null;
+// Outpost Rush arena: the three capture-point clusters of the static entities. Sol is the middle one
+// (the midpoint of the other two); Luna is the one nearer the player's team spawn (the team that held
+// Luna 307 to 141 spawned at (1230, 10751)), Astra the far one. Inferred from one match, 2026-09-11.
+const OUTPOST_SITES = [{ name: "Sol", x: 1272, y: 11018 }, { name: "Luna", x: 1370, y: 10880 }, { name: "Astra", x: 1174, y: 11158 }];
 const target = () => objects[focused] || objects[selected];
 const colour = { me: "#8c2f2b", player: "#2f4b7c", ally: "#2f7c4b", enemy: "#c0392b", animal: "#7a5c2e", other: "rgba(138,123,102,0.7)" };
 
@@ -261,11 +265,15 @@ function draw() {
     const [lx, ly] = toScreen(...toPx(trail[trail.length - 1]));
     if (lx < -40 || ly < -40 || lx > w + 40 || ly > h + 40) continue;
     ctx.fillStyle = k === "animal" ? "#f3ecdc" : colour[k]; ctx.strokeStyle = k === "animal" ? colour.animal : "#f3ecdc"; ctx.lineWidth = 1.5 * r;
-    if ((objects[key] || {}).capture_point) {                    // Outpost Rush outpost: a diamond with its state byte
-      ctx.fillStyle = "rgba(120,80,160,0.85)"; ctx.strokeStyle = "#f3ecdc";
+    if ((objects[key] || {}).capture_point) {                    // Outpost Rush outpost: a diamond, named by its place
+      const p = objects[key].position || {}, post = OUTPOST_SITES.find(s => Math.hypot(s.x - p.x, s.y - p.y) < 60);
+      const st = post && lastOpr && lastOpr.outposts ? lastOpr.outposts[post.name] : null;
+      const mine = snapshotMyTeam ?? 0;
+      ctx.fillStyle = st && st.owner != null ? (st.owner === mine ? colour.ally : colour.enemy) : "rgba(120,80,160,0.85)"; ctx.strokeStyle = "#f3ecdc";
       ctx.beginPath(); ctx.moveTo(lx, ly - 8 * r); ctx.lineTo(lx + 8 * r, ly); ctx.lineTo(lx, ly + 8 * r); ctx.lineTo(lx - 8 * r, ly); ctx.closePath(); ctx.fill(); ctx.stroke();
       ctx.fillStyle = "#2a2622"; ctx.font = `${10 * r}px ${getComputedStyle(document.body).getPropertyValue("--mono")}`;
-      ctx.fillText(`outpost ${objects[key].cp_state || ""}`, lx + 10 * r, ly + 4 * r);
+      const cap = st && st.capturing != null ? ` (${st.capturing === mine ? "we" : "they"} capture ${st.progress})` : "";
+      ctx.fillText(post ? `${post.name}${cap}` : `outpost ${objects[key].cp_state || ""}`, lx + 10 * r, ly + 4 * r);
       continue;
     }
     if ((objects[key] || {}).static) {                           // a placed thing: camp, node, object; a small square
@@ -420,7 +428,7 @@ function render(snapshot) {
     const feed = (snapshot.feed || []).slice(-10).reverse(), chat = (snapshot.chat || []).slice(-6).reverse();
     const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
     const targeted = snapshot.targeted_by || [];
-    const opr = snapshot.opr;
+    const opr = snapshot.opr; lastOpr = opr;
     $("opr").style.display = opr ? "" : "none";
     if (opr) {
       const mine = snapshotMyTeam ?? 0, score = opr.score || [0, 0];
