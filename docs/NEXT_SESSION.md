@@ -307,8 +307,14 @@ hyprctl dispatch 'hl.dsp.window.move({ window = "address:0x…", monitor = "nw-h
 
 With a dummy output (`hyprctl output create headless nw-headless`) and the game moved onto it, an
 injected `m` **did** reach the game: the map opened, confirmed by `grim -o nw-headless`, while the
-physical monitor kept showing the user's desktop and the cursor and focus were handed back in the same
-second. The injection route works.
+physical monitor kept showing the user's desktop.
+
+**But this does not solve the actual problem.** Keyboard focus is exclusive: feeding the game at the
+device level means the user loses the keyboard for those seconds, and that is exactly what happened -
+the user felt the focus being taken. The dummy output hides the game, it does not stop the focus theft.
+Any device-level injection steals the focus by construction; only injecting **above** the device would
+not, and that route is the dead end below. Do not describe this as "input without stealing the desktop"
+again.
 
 What broke is the **side effect of creating the output**: Hyprland 0.56 redistributed workspaces onto
 the new monitor, which moved 17 of the user's windows to a workspace they did not belong to and made
