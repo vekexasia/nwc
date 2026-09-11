@@ -366,3 +366,28 @@ Three honest limits, all visible in the page rather than hidden:
 live view cannot drift from the verified payload model. Stamina is not in the live view yet: it is ALC
 `group0.bit37` and comes from the ledger, whose frames are not joined to an entity either - it needs
 the same join as the attribution above.
+
+## Update 2026-09-11 (later): the player is identified by walking, and what blocks the join
+
+The manual object picker in the live page was a stopgap and it read as one. It is gone: the page has a
+single button, and the server watches the next three seconds of movement, picks the object that moved
+most, and reports the distance and how many times it beat the next candidate. If nothing moved it keeps
+the previous answer and says so. The arithmetic is covered by `nw_live.py --check` with synthetic
+positions (picker object, distance, margin, quiet window).
+
+That identifies the **position** object. The health, mana and name live in **different** objects, so
+they stay unattributed until the record join lands, which is still the open item.
+
+What was learned while trying the join, so the next session does not redo it: the record-layer readers
+already used by `nw_record_probe.js` take their context as the **fourth** argument (decompiled at
+`FUN_146af20d0` for the V1 varint at `0x6af2134`: `FUN_14087b5c0(dst, a, b, *param_1)`, and at
+`FUN_1461acfe0` for the type reference at `0x61ad00f`). Attaching the current record to state reads with
+those hooks produced a **constant** value across a hundred different states, so the cursor offset used
+(`ctx + 0x10`, the one the ALC field readers use) is wrong for these readers: the tracker was removed
+rather than left in the log as a lie. The next step there is to read the decompiled bodies around those
+call sites and find where the varint value actually lands.
+
+Also on this machine, after the failed attempts: tbe attach chain gets stuck (`frida.TransportError:
+timeout`, and before that `frida-agent.dll: File exists` inside the Proton prefix, which was a leftover
+temp directory that was cleaned). Three consecutive captures failed to attach after that, which points
+at a stale instrument inside the running game process: restarting the game is the usual fix.
