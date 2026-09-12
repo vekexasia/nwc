@@ -32,9 +32,9 @@ The Outpost Rush streams use a prefix varint with little-endian continuation:
 | bytes | n | value |
 |---|---:|---|
 | `2d` | 0 | 45 |
-| `8c 16` | 1 | `0x0c \| 0x16<<6` = 1,420 |
-| `c7 8f 05` | 2 | `7 \| 0x8f<<5 \| 0x05<<13` = 45,543 |
-| `e2 00 00 02` | 3 | `2 \| 0x02<<20` = 2,097,154, as a mask bits {1, 21} |
+| `8c 16` | 1 | 0x0c + (0x16 << 6) = 1,420 |
+| `c7 8f 05` | 2 | 7 + (0x8f << 5) + (0x05 << 13) = 45,543 |
+| `e2 00 00 02` | 3 | 2 + (0x02 << 20) = 2,097,154; as a mask, bits {1, 21} |
 | `fa 21 00 38 03 10` | 5 | bits {1, 2, 7, 21, 22, 23, 26, 27, 38} |
 
 Field masks are encoded the same way, which is why a mask with high bits set arrives as a 4- or 6-byte
@@ -175,7 +175,7 @@ snapshots (`01 c0 00 ...`); the decoder finds them by key.
 
 | key | meaning | value |
 |---|---|---|
-| `4a6e9282` | team scores | `own team \| other team << 16`. `e9 3e 10 25` = 0x25103e9 = **1001 / 593**, the final score, at 22:19:15 |
+| `4a6e9282` | team scores | own team + (other team << 16). `e9 3e 10 25` = 0x25103e9 = **1001 / 593**, the final score, at 22:19:15 |
 | `448dd922` | outpost **Luna** | byte 0 owner team (`ff` none), byte 1 capturing team (`ff` none), byte 2 capture progress |
 | `ca02dec1` | outpost **Sol** | same |
 | `06a8de5f` | outpost **Astra** | same |
