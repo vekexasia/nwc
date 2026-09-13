@@ -66,39 +66,6 @@ The capture-only path can run under Omarchy/Proton. Video records on X11 and
 Wayland through gpu-screen-recorder; check the produced `gameplay.mkv` once on a
 new host before trusting a session.
 
-## Remote play with Sunshine and Moonlight
-
-Use an operator-provisioned GPU host, a dedicated non-root Steam user and a
-working Xorg desktop. The previously tested host was Ubuntu 24.04, NVIDIA L4,
-XFCE/LightDM, driver 580.173.02 and Sunshine v2025.924.154138. These are historical
-tested versions, not an unconditional recommendation for every GPU or new host.
-
-1. Install a supported NVIDIA graphics/NVENC driver, Xorg desktop, Steam and
-   Sunshine from their official sources. Validate hardware rendering/encoding.
-2. Configure a real/headless display at the desired size (tested: 1920x1080).
-   Do not blindly copy PCI IDs or output names from another machine. On the
-   tested L4, `UseDisplayDevice=none` failed with its virtual display subsystem.
-3. Configure Sunshine's X11/NVENC backend and input permissions for the Steam user.
-   Verify keyboard, mouse, moving video and audio through Moonlight.
-4. Keep the Sunshine admin UI loopback-only and pair through an SSH tunnel:
-
-   ```sh
-   ssh -N -L 127.0.0.1:47990:127.0.0.1:47990 YOUR_GAMING_HOST
-   ```
-
-   Open `https://127.0.0.1:47990`, verify the tunneled endpoint, configure admin
-   credentials yourself and enter Moonlight's pairing PIN. Do not publish 47990.
-5. Restrict streaming ports to your client/VPN. The tested policy allowed TCP
-   47984/47989/48010 and UDP 47998:48000; verify against your Sunshine version.
-   Keep UPnP disabled, transport encryption enabled and X11 TCP disabled.
-6. Start Steam on the remote desktop, complete authentication and launch the game.
-   Capture runs on this gaming host, not on the Moonlight viewing computer.
-
-The existing machine-specific setup and verification history is preserved in
-[Streaming/new-world-capture.md](Streaming/new-world-capture.md). Its old paths,
-IPs and service instructions describe that deployment; they are not portable
-new-host defaults. This migration has not reconfigured that machine.
-
 ## Run the web service remotely
 
 Copy this repository's source to the gaming host, install the dependencies there

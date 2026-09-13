@@ -1,10 +1,7 @@
 # Working rules
 
-- Start by reading docs/NEXT_SESSION.md; it preserves the conversation context and next steps.
-
 - Use English for code, comments, documentation and UI. Preserve historical evidence verbatim.
-- This is the continuation workspace. Do not edit the old Aeternum-World checkout as part of new work.
-- Read docs/HANDOFF.md before continuing the offline decoder: the completed workflow import includes a cursor fix absent from the old checkout.
+- This repository is the capturer only: capture stack, web controls and their setup notes.
 - Do not interrupt or relocate an existing background run during the workspace handoff.
 - Never operate game input, capture Start/Stop, live streams or cloud resources without task authorization.
 - Keep changes small; reuse existing parsers and leave a runnable check for new logic.

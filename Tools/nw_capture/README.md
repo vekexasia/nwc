@@ -145,5 +145,3 @@ observation/correlation, pre-hook validation, final flush ordering, late-callbac
 suppression, and synthetic ledger/extractor compatibility. They do not prove
 native callback ABI behavior, live concurrency, remote transport ordering, or
 game stability.
-
-See [capture checklist](CAPTURES_TODO.MD).
