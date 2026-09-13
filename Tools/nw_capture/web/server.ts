@@ -13,6 +13,7 @@ function integer(name: string, fallback: number, max: number) {
   return Number(value);
 }
 const port = integer('PORT', 8787, 65535);
+const bind = process.env.CAPTURE_HOST || '127.0.0.1';
 const videoEnabled = process.env.CAPTURE_VIDEO !== '0';
 // The gpu-screen-recorder backend writes one local file and cannot also push RTMPS.
 if (process.env.YOUTUBE_KEY_FILE || process.env.YOUTUBE_OAUTH_CONFIG) throw Error('YouTube streaming was removed with the ffmpeg backend');
@@ -168,7 +169,8 @@ const server = http.createServer(async (req, res) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; frame-ancestors 'none'");
   const host = req.headers.host;
-  if (host !== `127.0.0.1:${port}` && host !== `localhost:${port}`) { res.writeHead(403).end(); return; }
+  // Bound to a LAN address the Host may be any local IP; a name could be an attacker's, rebound to us.
+  if (host !== `127.0.0.1:${port}` && host !== `localhost:${port}` && !(bind !== '127.0.0.1' && new RegExp(`^\\d{1,3}(\\.\\d{1,3}){3}:${port}$`).test(host ?? ''))) { res.writeHead(403).end(); return; }
   const reply = (code: number, body: unknown) => { res.writeHead(code, { 'Content-Type': 'application/json' }).end(JSON.stringify(body)); };
   if (req.method === 'POST') {
     if (req.headers.origin !== `http://${host}` || req.headers['x-capture-action'] !== '1' || req.headers['transfer-encoding'] || Number(req.headers['content-length'] ?? 0) > 1024) { reply(403, { error: 'Same-origin bounded action required.' }); return; }
@@ -204,5 +206,5 @@ const timer = setInterval(() => {
   }
 }, 500);
 for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => { closing = true; stop(); });
-server.on('error', (error) => { console.error(`Cannot serve on 127.0.0.1:${port}: ${error.message}`); closing = true; stop(); process.exitCode = 1; });
-server.listen(port, '127.0.0.1', () => console.log(`Capture: http://127.0.0.1:${port}`));
+server.on('error', (error) => { console.error(`Cannot serve on ${bind}:${port}: ${error.message}`); closing = true; stop(); process.exitCode = 1; });
+server.listen(port, bind, () => console.log(`Capture: http://${bind === '0.0.0.0' ? '127.0.0.1' : bind}:${port}`));

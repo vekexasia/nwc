@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { once } from 'node:events';
+import { request as httpRequest } from 'node:http';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const temp = mkdtempSync(join(tmpdir(), 'shared-capture-'));
@@ -86,7 +87,22 @@ try {
   await action('stop'); server.kill('SIGTERM');
   assert.equal((await once(server, 'close'))[0], 0);
   assert.equal(existsSync(join(data, 'owner')), false);
-  console.log('PASS: concurrent start/stop, startup cancellation, shared snapshot, child-exit gate, video in ZIP, ZIP allowlist, traversal, origin, failure, SIGTERM cleanup');
+
+  // Bound to a LAN address: an IP Host is served, a name is still refused.
+  const lanPort = port + 1;
+  const lan = spawn(process.execPath, [join(here, 'server.ts')], { env: { ...process.env, PORT: String(lanPort), CAPTURE_HOST: '0.0.0.0', CAPTURE_DATA: join(temp, 'lan'), CAPTURE_PYTHON: fake, CAPTURE_VIDEO: '0' }, stdio: ['ignore', 'pipe', 'inherit'] });
+  try {
+    await once(lan.stdout!, 'data');
+    // fetch() forbids a custom Host header, so go through node:http.
+    const ask = (host: string) => new Promise<number>((resolve, reject) => {
+      const request = httpRequest({ host: '127.0.0.1', port: lanPort, path: '/api/session', headers: { Host: host } }, response => { response.resume(); resolve(response.statusCode!); });
+      request.on('error', reject); request.end();
+    });
+    assert.equal(await ask(`127.0.0.1:${lanPort}`), 200);
+    assert.equal(await ask(`192.168.3.50:${lanPort}`), 200);
+    assert.equal(await ask(`evil.test:${lanPort}`), 403);
+  } finally { lan.kill('SIGTERM'); await once(lan, 'close'); }
+  console.log('PASS: concurrent start/stop, startup cancellation, shared snapshot, child-exit gate, video in ZIP, ZIP allowlist, traversal, origin, LAN host allowlist, failure, SIGTERM cleanup');
 } finally {
   if (server.exitCode === null) { server.kill('SIGTERM'); await once(server, 'close'); }
   rmSync(temp, { recursive: true, force: true });
