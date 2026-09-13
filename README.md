@@ -45,6 +45,7 @@ The original workspace and running gaming-host service were not moved or stopped
 .venv-capture/bin/python Tools/test_login_new_world.py
 .venv-capture/bin/python Tools/nw_capture/experimental/offline/test_decode_saved_position.py
 node Tools/nw_capture/web/test.ts
+node Tools/nw_capture/web/test_app.ts
 ```
 
 Node executes TypeScript directly; these commands do not perform static type checking.

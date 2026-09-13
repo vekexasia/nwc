@@ -1,5 +1,6 @@
 const element = id => document.getElementById(id);
-let downloadedId = '';
+// In sessionStorage, so a reload does not download the same archive again.
+let downloadedId = sessionStorage.getItem('downloadedId') ?? '';
 let snapshot;
 let observedAt = 0;
 let pending = false;
@@ -27,7 +28,7 @@ function render(value) {
   element('download').hidden = !value.download;
   if (value.download) {
     element('download').href = value.download;
-    if (downloadedId !== value.id) { downloadedId = value.id; element('download').click(); }
+    if (downloadedId !== value.id) { downloadedId = value.id; sessionStorage.setItem('downloadedId', value.id); element('download').click(); }
   }
 }
 async function poll() {
