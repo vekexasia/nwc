@@ -3,15 +3,27 @@ let downloadedId = '';
 let snapshot;
 let observedAt = 0;
 let pending = false;
+function size(bytes) {
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let index = 0;
+  while (bytes >= 1024 && index < units.length - 1) { bytes /= 1024; index += 1; }
+  return `${index === 0 ? bytes : bytes.toFixed(1)} ${units[index]}`;
+}
 function render(value) {
   snapshot = value; observedAt = performance.now();
-  for (const key of ['state', 'name', 'id', 'bytes', 'count', 'errors', 'error', 'videoState', 'videoFrames', 'youtubeState']) element(key).textContent = String(value[key]);
+  for (const key of ['state', 'name', 'id', 'count', 'errors', 'error', 'videoState']) element(key).textContent = String(value[key]);
+  for (const key of ['bytes', 'videoBytes']) element(key).textContent = size(value[key]);
+  const labels = { steam: 'Steam running', game: 'New World running', python: 'Capture environment', frida: 'Frida server file', recorder: 'Video recorder', port: 'Capture port free' };
+  element('ready').replaceChildren(...Object.entries(labels).map(([key, label]) => {
+    const item = document.createElement('li');
+    item.textContent = `${value.ready[key] ? 'OK' : 'MISSING'} - ${label}`;
+    item.className = value.ready[key] ? 'ok' : 'missing';
+    return item;
+  }), Object.assign(document.createElement('li'), { textContent: `${value.ready.diskGB} GB free on the capture disk` }));
   const active = ['STARTING', 'RUNNING', 'STOPPING'].includes(value.state);
   element('session-name').disabled = active;
   element('start').disabled = pending || active;
   element('stop').disabled = pending || !active || value.state === 'STOPPING';
-  element('youtube').hidden = !value.youtubeUrl;
-  if (value.youtubeUrl) element('youtube').href = value.youtubeUrl;
   element('download').hidden = !value.download;
   if (value.download) {
     element('download').href = value.download;

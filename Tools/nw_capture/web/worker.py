@@ -4,7 +4,6 @@ from pathlib import Path
 import resource
 import runpy
 import sys
-import time
 
 HERE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(HERE))
@@ -12,9 +11,8 @@ import nw_capture
 
 output = Path(sys.argv[1]).resolve()
 steam = sys.argv[2]
-seconds = int(sys.argv[3])
 parent_pid = os.getppid()
-resource.setrlimit(resource.RLIMIT_FSIZE, (128 * 1024 * 1024, 128 * 1024 * 1024))
+resource.setrlimit(resource.RLIMIT_FSIZE, (2 * 1024 ** 3, 2 * 1024 ** 3))
 os.umask(0o077)
 import signal
 signal.signal(signal.SIGTERM, lambda *_: (output / 'stop').touch())
@@ -24,10 +22,9 @@ signal.signal(signal.SIGINT, lambda *_: (output / 'stop').touch())
 class ManagedRunner(nw_capture.HttpsTapRunner):
     def _wait_for_exit(self):
         self._web_ready = True
-        deadline = time.monotonic() + seconds
         while True:
             self.publish()
-            if (output / 'stop').exists() or os.getppid() != parent_pid or time.monotonic() >= deadline:
+            if (output / 'stop').exists() or os.getppid() != parent_pid:
                 return
             if self._detached.wait(0.5):
                 self.exit_code = max(self.exit_code, 2)
@@ -50,7 +47,7 @@ class ManagedRunner(nw_capture.HttpsTapRunner):
 # The launcher still owns Frida startup, flush/detach, extraction and cleanup.
 nw_capture.HttpsTapRunner = ManagedRunner
 sys.argv = [str(HERE / 'capture_proton.py'), '--steam-dir', steam,
-            '--timeout', str(seconds), '--output-dir', str(output)]
+            '--timeout', '0', '--output-dir', str(output)]
 # Refuse an existing server before the launcher can mistake it for its child.
 import socket
 with socket.socket() as probe:

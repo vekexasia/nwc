@@ -1,7 +1,7 @@
 # Shared capture web POC
 
 Run on the Linux gaming host as the Steam user, with Steam and New World already
-running. No game launch or login automation. Optional local video and RTMPS encoder.
+running. No game launch or login automation. Optional local video recording.
 Uses the existing `capture_proton.py` collector, not a simulated collector.
 
 ## Run
@@ -9,6 +9,7 @@ Uses the existing `capture_proton.py` collector, not a simulated collector.
 Requires Node >=22.18 (native TypeScript stripping; tested 26.7.0), Python with
 `../requirements.txt` in a private venv, matching Windows Frida server beside
 `capture_proton.py`, Proton 11.0 and SteamLinuxRuntime_4. No npm packages/build.
+With `CAPTURE_VIDEO=1`, `gpu-screen-recorder` must be installed on the host.
 Prepare the existing isolated Python environment as in
 [the host guide](../../../docs/SETUP.md).
 
@@ -23,16 +24,20 @@ Optional operator environment, not browser inputs:
 - `STEAM_DIR`: Steam installation containing steamapps; default `$HOME/.local/share/Steam`.
 - `CAPTURE_PYTHON`: absolute Python executable; default repo `.venv-capture/bin/python`.
 - `CAPTURE_VIDEO`: `1` records gameplay video alongside the collector (default off).
-- `VIDEO_SIZE`: X11 capture size, default `1920x1080` at 30 fps.
-- `VIDEO_AUDIO_SOURCE`: PulseAudio source, default `default`; select the gameplay monitor.
-- `YOUTUBE_KEY_FILE`: optional private 0600 stream-key file, outside capture output.
-- `YOUTUBE_OAUTH_CONFIG`: private JSON produced by `youtube_auth.py`. Enables direct OAuth broadcast lifecycle; see [replication guide](YOUTUBE.md).
-- `YOUTUBE_WATCH_URL`: required with key only without OAuth; URL of an independently verified unlisted broadcast.
-  A key alone does not create/rename a broadcast. No Studio automation is used.
+- `VIDEO_TARGET`: gpu-screen-recorder capture target, default `screen`; a monitor
+  name from `gpu-screen-recorder --list-monitors` selects a single display. Window
+  capture is X11 only (`-w <window id>`, `focused`); on Wayland use `portal`, which
+  adds `-restore-portal-session yes` so the one-time window choice is reused.
+- `VIDEO_FPS`: frame rate, default `30`. `VIDEO_BITRATE`: CBR kbps, default `6000`
+  (about 45 MB per minute).
+- `VIDEO_AUDIO_SOURCE`: gpu-screen-recorder audio source, default `default_output`.
+  `--list-audio-devices` shows the alternatives; sources combine with `|`.
+- `VIDEO_RECORDER`: absolute recorder path; `run.sh` resolves it from PATH.
 - `CAPTURE_EXPORT_RAW`: `1` adds capture payloads to ZIP. Sensitive: do not share publicly.
 - `CAPTURE_NODE`: Node executable; default resolved `node` on the launching PATH.
 - `PORT`: loopback HTTP port, default 8787.
-- `CAPTURE_SECONDS`: maximum collection seconds, default 600, range 1..3600.
+- `CAPTURE_STORAGE_GB`: output root ceiling, default 40 with video, 1 without.
+  A session stops at half of it, because the ZIP stores a second copy of the video.
 - `CAPTURE_DATA`: private output root; default `Tools/nw_capture/captures/web` (gitignored).
 - For SSH launches, configure `HOME`, `DISPLAY`, `XAUTHORITY`, `XDG_RUNTIME_DIR`
   and `DBUS_SESSION_BUS_ADDRESS` for the gaming user. Start in a directory that
@@ -53,6 +58,12 @@ Ctrl+C on the Node process and wait for exit. Closing the browser only ends poll
 
 ## Behavior and limits
 
+The page shows host checks above the controls: Steam and New World processes, the
+configured Python, the `frida-server.exe` file, the video recorder, whether port 27943
+is free and the space left on the output filesystem. They are sampled at most every
+two seconds, are informational only and never block START; the server and the collector
+still perform their own validation.
+
 Enter a session name before START (1-100 characters). The shared snapshot preserves
 the original name; the ZIP attachment uses a filesystem-safe form of it. Internal
 directories retain unique IDs, so repeated names cannot overwrite captures.
@@ -61,7 +72,9 @@ One server-owned session, shared by all tabs. Polling/reopening reads the same I
 state, timestamps and counters. START is serialized; duplicate starts return 409.
 STOP is idempotent even during STARTING. STOPPING remains visible until the owned
 collector exits, its final metadata confirms flush/sink success, and ZIP creation
-exits successfully. No successful download is offered for incomplete captures; video failures can still yield a valid capture archive flagged ERROR.
+exits successfully. No download is offered when the ledger is missing or the collector's sink failed. A
+capture ended by closing the game is archived and keeps `final_flush_acknowledged:
+false`, which means the last in-flight batch was lost, not the recorded ledger; video failures can still yield a valid capture archive flagged ERROR.
 
 Duration is time since the server accepted START, including setup and cleanup,
 not just time hooked. The browser extrapolates from server time, not its wall clock.
@@ -74,24 +87,27 @@ newly opened page observing completion. No local/session storage controls captur
 Browser download policies can block the automatic attempt; the explicit button
 always permits retry. Only the latest session is addressable through HTTP.
 
-ZIP always contains aggregate `metadata.json`, including the session name. When
-configured it also contains `youtube.txt` and raw `captures/` files. Video is linked,
-never embedded: `gameplay.mkv` stays on the host and is excluded from the ZIP.
-Raw export excludes `keylog.txt` and runtime logs but HTTPS payloads/metadata can
-still contain credentials. Only enable it on a trusted local/tunnel endpoint.
-Stream keys and browser credentials are never copied into the output directory.
-Without OAuth the YouTube URL is operator configuration; RTMPS alone cannot verify
-visibility or lifecycle. With OAuth, Start creates and verifies a fresh unlisted
-broadcast and Stop confirms its closure through the official YouTube API.
+There is no capture time limit: a session runs until STOP, the storage ceiling, or a
+failure. YouTube streaming and its OAuth lifecycle were removed with the ffmpeg
+backend; the server refuses to start when `YOUTUBE_KEY_FILE` or `YOUTUBE_OAUTH_CONFIG`
+is still set.
+
+The ZIP contains aggregate `metadata.json`, the raw `ledger.bin` and, when video is
+enabled, `gameplay.mkv` stored without compression. `CAPTURE_EXPORT_RAW=1` adds the
+rest of `captures/`. Raw export excludes `keylog.txt` and runtime logs but HTTPS
+payloads/metadata can still contain credentials. Only enable it on a trusted
+local/tunnel endpoint. The ledger holds raw game traffic: treat the archive as private.
+The host keeps its own copy of the video and the ledger after the download.
 
 Video and collector start together, and Stop waits for both before archiving.
-The frame count means locally encoded frames, not confirmed YouTube playback.
+Video bytes on the page are the growing local file, not confirmed playable output.
 Video errors preserve an otherwise valid capture ZIP and remain visible as ERROR.
-The first implementation records 1080p30 H.264 NVENC + AAC stereo; no software
-encoding fallback is silently used. No video source is configured through HTTP.
+Recording uses gpu-screen-recorder (X11 and Wayland, GPU encoding) at CBR, default
+H.264 with Opus audio. No video source is configured through HTTP.
 
-Limits: 10 retained session directories, 1 GiB admission storage ceiling,
-256 MiB per-session soft stop threshold (1 GiB with video) sampled every 500 ms, 128 MiB hard limit
+Limits: 10 retained session directories, `CAPTURE_STORAGE_GB` admission ceiling,
+half of it as the per-session soft stop threshold (256 MiB without video) sampled
+every 500 ms, 2 GiB hard limit
 per worker file, 32 HTTP connections, 5-second request/header deadlines, 30-second
 startup deadline. Storage thresholds are stop/admission limits, not filesystem
 quotas; writes and extraction can overshoot between checks. Use a filesystem quota
@@ -115,9 +131,9 @@ server restart does not restore the session or its download route. Private files
 remain. Clean server shutdown first stops and waits for the owned worker. If the
 server crashes, a worker in its collection loop detects parent loss and flushes;
 its configured timeout remains a fallback. A crash during startup or an unresponsive
-Frida RPC may require operator cleanup. A leftover `CAPTURE_DATA/owner` refuses
-restart: inspect the recorded Node PID, owned worker and Frida server first, then
-remove that file only after they are absent. No automatic stale-lock guessing.
+Frida RPC may require operator cleanup. `CAPTURE_DATA/owner` is reclaimed only when
+the recorded Node PID no longer exists; a live owner still refuses the restart. The
+collector separately refuses to start while a previous Frida server holds port 27943.
 
 Loopback only, no authentication, no TLS, no multi-user isolation. Any local user
 or tunnel user can control the shared session and read aggregate metadata. Do not
@@ -173,18 +189,20 @@ Live verification on the authorized VM, 2026-09-10:
 
 These checks do not prove anti-cheat safety, long-run stability, exhaustive HTTP
 payload capture, full gameplay decoding, forced native-RPC cleanup, or playback
-quality. Video/YouTube and raw credential-safe export are deferred.
+quality. Raw credential-safe export is deferred.
 
-## YouTube without Studio
+Video backend change, 2026-09-13, verified on a local Wayland workstation:
 
-Use [YOUTUBE.md](YOUTUBE.md) for the reproducible Desktop OAuth setup, local/SSH
-commands, credential handling, troubleshooting, and verification evidence.
-Apps Script was abandoned after authorization problems and is no longer used.
+- `ffmpeg -f x11grab -i :0` on that Wayland session recorded a uniform black frame
+  (`signalstats YAVG=16`). This is why the backend moved to gpu-screen-recorder.
+- `video.py` run standalone for 6 seconds, stopped with SIGTERM: `gameplay.mkv`
+  5.574 s, H.264 3840x2160 plus Opus stereo, `YAVG=50.9` on the first frame,
+  `video-result.json` exit 0.
+- `archive.py` on that real file plus a 100 kB ledger: ZIP CRC valid, entries
+  `metadata.json`, `ledger.bin` (deflated), `gameplay.mkv` (stored).
+- Stale-lock recovery: server killed with SIGKILL, restart with the same
+  `CAPTURE_DATA` succeeded; a live owner still refuses.
+- `node test.ts` and 6 Python web tests pass. Not verified: an actual game
+  capture with this backend, NVIDIA Wayland on the target host, long sessions.
 
-```sh
-node Tools/nw_capture/web/test_youtube.ts
-CAPTURE_TEST_YOUTUBE=1 node Tools/nw_capture/web/test.ts
-```
 
-Automated checks mock Google, but use the real local lifecycle and OAuth callback.
-They are not proof of actual YouTube ingestion or playback.

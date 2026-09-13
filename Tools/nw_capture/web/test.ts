@@ -19,10 +19,10 @@ elif sys.argv[1].endswith('video.py'):
     root = pathlib.Path(sys.argv[2])
     def stop(*_): (root / 'stop').touch()
     signal.signal(signal.SIGTERM, stop)
-    (root / 'video-progress.txt').write_text('frame=30\\n')
+    (root / 'gameplay.mkv').write_bytes(b'FAKE_VIDEO')
     while not (root / 'stop').exists(): time.sleep(0.02)
     time.sleep(0.5)
-    (root / 'gameplay.mkv').write_bytes(b'FAKE_VIDEO')
+    (root / 'gameplay.mkv').write_bytes(b'FAKE_VIDEO_FINALIZED')
 else:
     root = pathlib.Path(sys.argv[2])
     if (root.parent / 'fail').exists(): sys.exit(3)
@@ -30,6 +30,7 @@ else:
     meta = root / 'captures/session/dtls'
     meta.mkdir(parents=True)
     (meta / 'keylog.txt').write_text('SECRET')
+    (meta / 'ledger.bin').write_bytes(b'LEDGER')
     (root / 'status.json').write_text(json.dumps(dict(bytes=42,count=2,errors=0)))
     while not (root / 'stop').exists(): time.sleep(0.02)
     time.sleep(0.3)
@@ -39,40 +40,7 @@ chmodSync(fake, 0o700);
 const port = 18787;
 const base = `http://127.0.0.1:${port}`;
 const data = join(temp, 'data');
-const managed = process.env.CAPTURE_TEST_YOUTUBE === '1';
-const oauth = join(temp, 'oauth.json');
-const keyFile = join(temp, 'stream.key');
-const preload = join(temp, 'youtube-mock.mjs');
-if (managed) {
-  writeFileSync(oauth, JSON.stringify({ client_id: 'client', client_secret: 'secret', refresh_token: 'refresh', channel_id: 'channel', stream_id: 'stream' }), { mode: 0o600 });
-  writeFileSync(keyFile, 'test-key', { mode: 0o600 });
-  writeFileSync(preload, `import {appendFileSync} from 'node:fs';
-  let broadcast;
-  globalThis.fetch = async (input, options) => {
-    const url = new URL(input);
-    await new Promise(resolve=>setTimeout(resolve,30));
-    if(url.hostname==='oauth2.googleapis.com') return Response.json({access_token:'access',expires_in:3600});
-    const resource=url.pathname.split('/v3/')[1];
-    if(resource==='channels') return Response.json({items:[{id:'channel'}]});
-    if(resource==='liveStreams') return Response.json({items:[{snippet:{channelId:'channel'},cdn:{ingestionInfo:{streamName:'test-key'}}}]});
-    if(resource==='liveBroadcasts/bind') {broadcast.contentDetails.boundStreamId='stream'; return Response.json(broadcast);}
-    if(resource==='liveBroadcasts/transition') {
-      appendFileSync(${JSON.stringify(join(temp, 'youtube-events'))}, JSON.stringify({action:'stop',name:broadcast.snippet.title})+'\\n');
-      broadcast.status.lifeCycleStatus='complete'; return Response.json(broadcast);
-    }
-    if(options.method==='POST') {
-      broadcast=JSON.parse(options.body); broadcast.id='12345678901'; broadcast.snippet.channelId='channel';broadcast.status.lifeCycleStatus='live';
-      appendFileSync(${JSON.stringify(join(temp, 'youtube-events'))}, JSON.stringify({action:'start',name:broadcast.snippet.title})+'\\n');
-      return Response.json(broadcast);
-    }
-    if(options.method==='DELETE') {
-      appendFileSync(${JSON.stringify(join(temp, 'youtube-events'))}, JSON.stringify({action:'stop',name:broadcast.snippet.title})+'\\n');
-      return new Response(null,{status:204});
-    }
-    return Response.json({items:[broadcast]});
-  };`);
-}
-const server = spawn(process.execPath, [join(here, 'server.ts')], { env: { ...process.env, PORT: String(port), CAPTURE_DATA: data, CAPTURE_PYTHON: fake, ...(managed ? { CAPTURE_VIDEO: '1', YOUTUBE_OAUTH_CONFIG: oauth, YOUTUBE_KEY_FILE: keyFile, NODE_OPTIONS: `--import=${preload}` } : {}) }, stdio: ['ignore', 'pipe', 'inherit'] });
+const server = spawn(process.execPath, [join(here, 'server.ts')], { env: { ...process.env, PORT: String(port), CAPTURE_DATA: data, CAPTURE_PYTHON: fake, CAPTURE_VIDEO: '1' }, stdio: ['ignore', 'pipe', 'inherit'] });
 const state = async () => (await fetch(base + '/api/session')).json();
 const action = (name: string) => fetch(base + '/api/' + name, { method: 'POST', headers: { Origin: base, 'X-Capture-Action': '1', 'Content-Type': 'application/json' }, body: name === 'start' ? JSON.stringify({ name: 'Test session à / safe' }) : undefined });
 async function waitFor(predicate: () => Promise<boolean>) {
@@ -107,7 +75,7 @@ try {
   assert.equal(response.headers.get('content-disposition'), 'attachment; filename="Test-session-a-safe.zip"');
   const zip = join(temp, 'download.zip');
   writeFileSync(zip, Buffer.from(await response.arrayBuffer()));
-  const check = spawn('python3', ['-c', "import zipfile,sys; z=zipfile.ZipFile(sys.argv[1]); assert z.testzip() is None; assert set(z.namelist()) <= {'metadata.json','youtube.txt'}; assert b'SECRET' not in z.read('metadata.json')", zip], { stdio: 'inherit' });
+  const check = spawn('python3', ['-c', "import zipfile,sys; z=zipfile.ZipFile(sys.argv[1]); assert z.testzip() is None; assert set(z.namelist()) == {'metadata.json','ledger.bin','gameplay.mkv'}; assert z.read('gameplay.mkv') == b'FAKE_VIDEO_FINALIZED'; assert b'SECRET' not in z.read('metadata.json')", zip], { stdio: 'inherit' });
   assert.equal((await once(check, 'close'))[0], 0);
   for (const path of ['/download/../../owner', '/download/%2e%2e/owner', '/__proto__', '/constructor', '/logs/game-server.log', '/captures/keylog.txt']) assert.equal((await fetch(base + path)).status, 404);
   writeFileSync(join(data, 'fail'), '');
@@ -118,9 +86,8 @@ try {
   await action('stop'); server.kill('SIGTERM');
   assert.equal((await once(server, 'close'))[0], 0);
   assert.equal(existsSync(join(data, 'owner')), false);
-  console.log('PASS: concurrent start/stop, startup cancellation, shared snapshot, child-exit gate, ZIP allowlist, traversal, origin, failure, SIGTERM cleanup');
+  console.log('PASS: concurrent start/stop, startup cancellation, shared snapshot, child-exit gate, video in ZIP, ZIP allowlist, traversal, origin, failure, SIGTERM cleanup');
 } finally {
   if (server.exitCode === null) { server.kill('SIGTERM'); await once(server, 'close'); }
-  if (managed) { const events = readFileSync(join(temp, 'youtube-events'), 'utf8').trim().split('\n').map(line => JSON.parse(line)); assert.equal(events.filter(e=>e.action==='start').length, events.filter(e=>e.action==='stop').length); assert.ok(events.every(e=>e.name==='Test session à / safe')); }
   rmSync(temp, { recursive: true, force: true });
 }

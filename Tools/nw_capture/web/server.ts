@@ -1,8 +1,7 @@
-import { youtube, youtubeManaged } from './youtube.ts';
 import http from 'node:http';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, lstatSync, createReadStream } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, lstatSync, statfsSync, createReadStream } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -15,29 +14,34 @@ function integer(name: string, fallback: number, max: number) {
 }
 const port = integer('PORT', 8787, 65535);
 const videoEnabled = process.env.CAPTURE_VIDEO === '1';
-const youtubeUrl = process.env.YOUTUBE_WATCH_URL ?? '';
-if (youtubeManaged && (!videoEnabled || !process.env.YOUTUBE_KEY_FILE)) throw Error('Managed YouTube requires video and stream key');
-if (process.env.YOUTUBE_KEY_FILE && (!videoEnabled || (!youtubeManaged && !/^https:\/\/www\.youtube\.com\/watch\?v=[A-Za-z0-9_-]{11}$/.test(youtubeUrl)))) throw Error('YouTube requires video and a verified broadcast URL');
-const seconds = integer('CAPTURE_SECONDS', 600, 3600);
+// The gpu-screen-recorder backend writes one local file and cannot also push RTMPS.
+if (process.env.YOUTUBE_KEY_FILE || process.env.YOUTUBE_OAUTH_CONFIG) throw Error('YouTube streaming was removed with the ffmpeg backend');
+// One ceiling for the output root; a session may use half of it, the ZIP copies the rest.
+const storage = integer('CAPTURE_STORAGE_GB', videoEnabled ? 40 : 1, 512) * 1024 * 1024 * 1024;
 const python = process.env.CAPTURE_PYTHON ?? resolve(here, '../../../.venv-capture/bin/python');
 const steam = process.env.STEAM_DIR ?? join(process.env.HOME ?? '', '.local/share/Steam');
 const root = resolve(process.env.CAPTURE_DATA ?? join(here, '../captures/web'));
 mkdirSync(root, { recursive: true, mode: 0o700 });
-// One server process only; refuse restart until operator checks any stale owner.
+// One server process only. A lock left by a dead server is cleared: worker.py still
+// refuses to start while a previous Frida server holds port 27943.
 const lock = join(root, 'owner');
-writeFileSync(lock, String(process.pid), { flag: 'wx', mode: 0o600 });
+try { writeFileSync(lock, String(process.pid), { flag: 'wx', mode: 0o600 }); }
+catch {
+  const owner = Number(readFileSync(lock, 'utf8').trim());
+  let alive = true;
+  try { process.kill(owner, 0); } catch (error) { alive = (error as NodeJS.ErrnoException).code !== 'ESRCH'; }
+  if (!Number.isInteger(owner) || owner < 1 || alive) throw Error('Another capture server owns this output directory');
+  writeFileSync(lock, String(process.pid), { mode: 0o600 });
+}
 let child: ChildProcess | null = null;
 let video: ChildProcess | null = null;
 let collectorDone = false;
 let finalizing = false;
-let preparation: Promise<void> | null = null;
 let collected = false;
-let youtubeStatusPending = false;
-let youtubeStatusAt = 0;
 let closing = false;
 let cleanupUncertain = false;
 let stopAt = 0;
-let session = { name: '', filename: '', youtubeUrl: '', youtubeState: youtubeManaged ? 'READY' : 'DISABLED', videoState: videoEnabled ? 'READY' : 'DISABLED', videoFrames: 0, id: '', state: 'IDLE', startedAt: 0, endedAt: 0, bytes: 0, count: 0, errors: 0, error: '', download: '' };
+let session = { name: '', filename: '', videoState: videoEnabled ? 'READY' : 'DISABLED', videoBytes: 0, id: '', state: 'IDLE', startedAt: 0, endedAt: 0, bytes: 0, count: 0, errors: 0, error: '', download: '' };
 const active = () => ['STARTING', 'RUNNING', 'STOPPING'].includes(session.state);
 const directory = () => join(root, session.id);
 function stop() {
@@ -50,6 +54,25 @@ function stop() {
   }
 }
 function fail(message: string) { session.error = message; session.errors = Math.max(1, session.errors); }
+let preflight = { at: 0, value: {} };
+function ready() {
+  if (Date.now() - preflight.at < 2000) return preflight.value;
+  const names = new Set<string>();
+  for (const entry of readdirSync('/proc')) {
+    if (!/^\d+$/.test(entry)) continue;
+    try { names.add(readFileSync(`/proc/${entry}/comm`, 'utf8').trim()); } catch { /* process exited */ }
+  }
+  let collector = true;
+  try { collector = !readFileSync('/proc/net/tcp', 'utf8').split('\n').slice(1).some((line) => { const columns = line.trim().split(/\s+/); return columns[1]?.endsWith(':6D27') && columns[3] === '0A'; }); } catch { /* no procfs */ }
+  const recorder = process.env.VIDEO_RECORDER ?? (process.env.PATH ?? '').split(':').map((dir) => join(dir, 'gpu-screen-recorder')).find(existsSync) ?? '';
+  const free = statfsSync(root);
+  preflight = { at: Date.now(), value: {
+    steam: names.has('steam'), game: names.has('NewWorld.exe'), python: existsSync(python),
+    frida: existsSync(join(here, '../frida-server.exe')), recorder: !videoEnabled || existsSync(recorder),
+    port: collector, diskGB: Math.floor(free.bavail * free.bsize / (1024 * 1024 * 1024)) } };
+  return preflight.value;
+}
+
 function size(path: string): number {
   let total = 0;
   const entries = readdirSync(path, { withFileTypes: true });
@@ -77,14 +100,13 @@ function update() {
       if (session.state === 'STARTING') session.state = 'RUNNING';
       if (data.errors && !session.error) fail('Collector reported errors; see private host logs.');
     }
-    if (video && existsSync(join(directory(), 'video-progress.txt'))) {
-      const progress = readFileSync(join(directory(), 'video-progress.txt'), 'utf8').slice(-4096);
-      const frames = [...progress.matchAll(/^frame=(\d+)$/gm)];
-      if (frames.length) { session.videoFrames = Number(frames.at(-1)![1]); if (session.videoFrames > 0 && session.videoState === 'STARTING') session.videoState = 'ENCODING'; }
+    if (video && existsSync(join(directory(), 'gameplay.mkv'))) {
+      // The recorder reports no frame counter; growing file bytes show it is encoding.
+      session.videoBytes = lstatSync(join(directory(), 'gameplay.mkv')).size;
+      if (session.videoBytes > 0 && session.videoState === 'STARTING') session.videoState = 'ENCODING';
     }
-    if (size(directory()) > (videoEnabled ? 1024 : 256) * 1024 * 1024) { fail('Capture size limit reached.'); stop(); }
-    if (Date.now() - session.startedAt > (seconds + (youtubeManaged ? 120 : 30)) * 1000) { fail('Capture deadline exceeded.'); stop(); }
-    if (session.state === 'STARTING' && Date.now() - session.startedAt > (youtubeManaged ? 120000 : 30000)) { fail('Startup deadline exceeded.'); stop(); }
+    if (size(directory()) > (videoEnabled ? storage / 2 : 256 * 1024 * 1024)) { fail('Capture size limit reached.'); stop(); }
+    if (session.state === 'STARTING' && Date.now() - session.startedAt > 30000) { fail('Startup deadline exceeded.'); stop(); }
   } catch { fail('Capture monitoring failed; stop requested.'); stop(); }
   if (stopAt && Date.now() - stopAt > 30000 && (child?.pid || video?.pid)) {
     cleanupUncertain = true;
@@ -94,20 +116,12 @@ function update() {
   }
 }
 function saveSession() {
-  writeFileSync(join(directory(), 'session.json'), JSON.stringify({ name: session.name, id: session.id, youtubeUrl: session.youtubeUrl, youtubeState: session.youtubeState, videoState: session.videoState, error: session.error }));
+  writeFileSync(join(directory(), 'session.json'), JSON.stringify({ name: session.name, id: session.id, videoState: session.videoState, error: session.error }));
 }
-async function finish() {
-  if (!collectorDone || video || preparation || finalizing) return;
+function finish() {
+  if (!collectorDone || video || finalizing) return;
   finalizing = true;
   session.state = 'STOPPING'; stopAt = Date.now();
-  if (youtubeManaged) {
-    session.youtubeState = 'ENDING';
-    try {
-      const result = await youtube('stop', session.id, session.name); session.youtubeState = result.state;
-      if (result.state === 'CANCELLED') { session.youtubeUrl = ''; if (collected) fail('YouTube never went live; local video retained.'); }
-    }
-    catch (error) { console.error('YouTube closure failed:', error instanceof Error && error.name === 'Error' ? error.message : 'Network/response failure'); session.youtubeState = 'ERROR'; cleanupUncertain = true; fail('YouTube closure not confirmed; verify the owned broadcast before restarting.'); }
-  }
   try { saveSession(); } catch { fail('Cannot save session metadata.'); session.state = 'ERROR'; session.endedAt = Date.now(); return; }
   if (!collected) { session.state = session.error ? 'ERROR' : 'STOPPED'; session.endedAt = Date.now(); return; }
 
@@ -125,32 +139,20 @@ async function finish() {
 function launch(name: string) {
   if (closing || active()) return false;
   if (cleanupUncertain) throw Error('Operator cleanup required');
-  if (readdirSync(root).length >= 11 || size(root) > 1024 * 1024 * 1024) throw Error('Private storage limit reached; operator must remove old captures.');
+  if (readdirSync(root).length >= 11 || size(root) > storage) throw Error('Private storage limit reached; operator must remove old captures.');
   const id = randomUUID();
   mkdirSync(join(root, id), { mode: 0o700 });
   const filename = name.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 100) || 'capture';
-  session = { name, filename, youtubeUrl, youtubeState: youtubeManaged ? 'PREPARING' : 'DISABLED', videoState: videoEnabled ? 'STARTING' : 'DISABLED', videoFrames: 0, id, state: 'STARTING', startedAt: Date.now(), endedAt: 0, bytes: 0, count: 0, errors: 0, error: '', download: '' };
+  session = { name, filename, videoState: videoEnabled ? 'STARTING' : 'DISABLED', videoBytes: 0, id, state: 'STARTING', startedAt: Date.now(), endedAt: 0, bytes: 0, count: 0, errors: 0, error: '', download: '' };
   try { saveSession(); } catch { session.state = 'ERROR'; session.endedAt = Date.now(); fail('Cannot save session metadata.'); throw Error('Session storage unavailable'); }
   stopAt = 0; collectorDone = false; finalizing = false; collected = false;
-  if (youtubeManaged) {
-    preparation = (async () => {
-      try {
-        const broadcast = await youtube('start', session.id, session.name);
-        session.youtubeUrl = broadcast.url; session.youtubeState = broadcast.state; saveSession();
-        if (session.state !== 'STOPPING') spawnCapture(); else collectorDone = true;
-      } catch (error) {
-        console.error('YouTube preparation failed:', error instanceof Error && error.name === 'Error' ? error.message : 'Network/response failure');
-        fail('YouTube preparation failed. No gameplay transmitted.'); collectorDone = true; stop();
-      }
-    })();
-    preparation.finally(() => { preparation = null; if (collectorDone) void finish(); });
-  } else spawnCapture();
+  spawnCapture();
   return true;
 }
 function spawnCapture() {
   collected = true;
   if (videoEnabled) {
-    video = spawn(python, [join(here, 'video.py'), directory(), String(seconds)], { detached: true, stdio: 'ignore' });
+    video = spawn(python, [join(here, 'video.py'), directory()], { detached: true, stdio: 'ignore' });
     video.on('error', () => { fail('Unable to start video encoder.'); stop(); });
     video.on('close', (code) => {
       update(); video = null;
@@ -159,7 +161,7 @@ function spawnCapture() {
       stop(); finish();
     });
   }
-  child = spawn(python, [join(here, 'worker.py'), directory(), steam, String(seconds)], { detached: true, stdio: 'ignore' });
+  child = spawn(python, [join(here, 'worker.py'), directory(), steam], { detached: true, stdio: 'ignore' });
   child.on('error', () => fail('Unable to launch collector. Check Python/Steam configuration.'));
   child.on('close', (code, signal) => {
     update(); child = null; collectorDone = true;
@@ -183,12 +185,12 @@ const server = http.createServer(async (req, res) => {
         let name;
         try { const data: unknown = JSON.parse(body); if (!data || typeof data !== 'object' || !('name' in data)) throw Error('Missing name'); name = data.name; } catch { reply(400, { error: 'Session name required.' }); return; }
         if (typeof name !== 'string' || !name.trim() || name.trim().length > 100 || /[\x00-\x1f\x7f<>]/.test(name)) { reply(400, { error: 'Use a session name of 1-100 characters without control characters or angle brackets.' }); return; }
-        reply(launch(name.trim()) ? 202 : 409, { ...session, serverNow: Date.now() }); return; }
+        reply(launch(name.trim()) ? 202 : 409, { ...session, ready: ready(), serverNow: Date.now() }); return; }
       if (req.url === '/api/stop') { stop(); reply(202, session); return; }
     } catch { reply(503, { error: 'Operation failed; check configuration or private storage limits.' }); return; }
   }
   if (req.method !== 'GET') { reply(405, {}); return; }
-  if (req.url === '/api/session') { reply(200, { ...session, serverNow: Date.now() }); return; }
+  if (req.url === '/api/session') { reply(200, { ...session, ready: ready(), serverNow: Date.now() }); return; }
   const assets: Record<string, [string, string]> = { '/': ['index.html', 'text/html'], '/app.js': ['app.js', 'text/javascript'], '/style.css': ['style.css', 'text/css'] };
   const asset = Object.hasOwn(assets, req.url ?? '') ? assets[req.url ?? ''] : undefined;
   if (asset) { res.writeHead(200, { 'Content-Type': asset[1] }); res.end(readFileSync(join(here, asset[0]))); return; }
@@ -202,14 +204,7 @@ const server = http.createServer(async (req, res) => {
 server.requestTimeout = 5000; server.headersTimeout = 5000; server.maxConnections = 32;
 const timer = setInterval(() => {
   update();
-  if (youtubeManaged && session.state === 'RUNNING' && !youtubeStatusPending && Date.now() - youtubeStatusAt > 10000) {
-    youtubeStatusPending = true; youtubeStatusAt = Date.now(); const id = session.id;
-    youtube('status', id, session.name).then(result => {
-      if (session.id === id && session.state === 'RUNNING') session.youtubeState = result.state;
-    }).catch(error => { console.error('YouTube status failed:', error instanceof Error && error.name === 'Error' ? error.message : 'Network/response failure'); if (session.id === id && session.state === 'RUNNING') { fail('YouTube status verification failed.'); stop(); } })
-      .finally(() => { youtubeStatusPending = false; });
-  }
-  if (closing && !child && !video && !preparation && !active()) {
+  if (closing && !child && !video && !active()) {
     clearInterval(timer);
     import('node:fs').then(({ unlinkSync }) => { if (!cleanupUncertain) unlinkSync(lock); server.close(); server.closeAllConnections(); }).catch(() => process.exitCode = 1);
   }

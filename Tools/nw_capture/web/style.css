@@ -1,3 +1,6 @@
 body{font:17px system-ui;background:#101719;color:#e4e8e5;margin:0}main{max-width:760px;margin:8vh auto;padding:24px}h1{font-size:42px}h2{color:#a9d9be}dl{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:24px;background:#1c282a}dd{text-align:right;font-variant-numeric:tabular-nums}button,a{font:inherit;padding:12px 24px;border:1px solid #81b99c;border-radius:4px;background:#a9d9be;color:#102219;cursor:pointer}button:disabled{opacity:.35;cursor:default}a{display:inline-block}a[hidden]{display:none}#error{color:#ffb4a9}small,#id{overflow-wrap:anywhere;color:#a8b8b3}button:focus-visible,a:focus-visible{outline:3px solid white}
 
 input{font:inherit;padding:10px;background:#1c282a;color:#e4e8e5;border:1px solid #81b99c;border-radius:4px;max-width:100%;box-sizing:border-box}input:focus-visible{outline:3px solid white}
+#ready { list-style: none; padding: 0 }
+.ok { color: #4caf50 }
+.missing { color: #e57373 }

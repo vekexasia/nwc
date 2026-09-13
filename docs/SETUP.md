@@ -9,9 +9,17 @@ an already owned game session. Setup is explicit; nothing here starts on boot.
 - Python 3 with venv/pip, or uv. Use a private environment, never system pip.
 - Steam, New World (app 1063730), Proton 11.0 and SteamLinuxRuntime_4.
 - Windows x64 Frida server **17.9.10**, matching the Python dependency.
-- For the existing video backend: X11, FFmpeg with H.264 NVENC, a compatible
-  NVIDIA driver, PulseAudio and libavformat/libavutil. It is not a native Wayland
-  recorder and has no implicit software-encoder fallback.
+- For video: `gpu-screen-recorder` with a working GPU encoder (NVENC, VA-API) and
+  PipeWire or PulseAudio audio. It records on X11 and Wayland; on Wayland it needs
+  its `gsr-kms-server` helper, installed by the distribution package.
+
+One command performs the two steps below, including checksum verification:
+
+```sh
+bash Tools/nw_capture/setup.sh
+```
+
+To do it by hand instead:
 
 ```sh
 umask 077
@@ -54,9 +62,9 @@ is not necessary for capture. It is not a Steam credential/login bypass. To run
 its standalone checks in the project venv, install its declared dependency with
 `.venv-capture/bin/python -m pip install evdev==2.0.0` (Linux only).
 
-The capture-only path can run under Omarchy/Proton. Do not assume that setting
-`CAPTURE_VIDEO=1` on a Wayland session will record the correct full game window:
-the current video implementation expects an actual X11 source.
+The capture-only path can run under Omarchy/Proton. Video records on X11 and
+Wayland through gpu-screen-recorder; check the produced `gameplay.mkv` once on a
+new host before trusting a session.
 
 ## Remote play with Sunshine and Moonlight
 
@@ -123,30 +131,37 @@ ssh -N -L 127.0.0.1:8787:127.0.0.1:8787 YOUR_GAMING_HOST
 Open `http://127.0.0.1:8787`. Do not expose the unauthenticated capture service
 publicly. Local and remote services cannot occupy the same forwarded port.
 
-## Video and YouTube
+## Video
 
-On a supported X11/NVENC host, choose the actual gameplay audio monitor from
-`pactl list short sources`; do not accidentally stream a microphone. Then set:
+Install `gpu-screen-recorder` on the gaming host, then list the capture targets and
+audio sources it offers:
+
+```sh
+gpu-screen-recorder --list-monitors
+gpu-screen-recorder --list-audio-devices
+```
+
+A typical play session, with the game on one monitor:
 
 ```sh
 export CAPTURE_VIDEO=1
-export VIDEO_SIZE=1920x1080
-export VIDEO_AUDIO_SOURCE='YOUR_GAMEPLAY_MONITOR'
+export VIDEO_TARGET=screen            # or a monitor name such as DP-1
+export VIDEO_AUDIO_SOURCE=default_output
 ```
 
-For automatic unlisted broadcasts, follow the complete
-[OAuth guide](../Tools/nw_capture/web/YOUTUBE.md). Credentials stay in private host
-configuration outside this repository. Set `YOUTUBE_KEY_FILE` and
-`YOUTUBE_OAUTH_CONFIG` before starting the service. No Google browser is needed
-while capturing. The ZIP includes the video link, not the video file.
+Do not point `VIDEO_AUDIO_SOURCE` at a microphone by accident. The ZIP includes the
+video file itself, so keep at least twice the recording size free on disk.
+A session has no time limit: it runs until STOP or until the storage ceiling.
+YouTube streaming was removed: the server refuses to start when `YOUTUBE_KEY_FILE`
+or `YOUTUBE_OAUTH_CONFIG` is set.
 
 ## Validation and recovery
 
 Run the README checks before real capture. Then verify one named capture in the
-actual browser, final flush, ZIP CRC, YouTube closure (when enabled) and absence
+actual browser, final flush, ZIP CRC, a playable `gameplay.mkv` and absence
 of owned workers/Frida after Stop. Do not infer anti-cheat safety from mocked tests.
 
-Never clear `CAPTURE_DATA/owner` without checking its PID, owned workers/Frida and
-broadcast state. See the web and OAuth guides for recovery. Raw captures remain
+The server reclaims `CAPTURE_DATA/owner` only when the recorded PID is gone; check
+owned workers and Frida before forcing anything else. See the web guide for recovery. Raw captures remain
 private even when keylog files are excluded. Stop/delete paid cloud resources
 separately when appropriate; this service does not manage billing or VM shutdown.

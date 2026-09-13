@@ -20,19 +20,33 @@ class ArchiveTests(unittest.TestCase):
                         final_flush_acknowledged=False, sink_write_succeeded=True,
                         token='NEVER_EXPORT')
             meta.write_text(json.dumps(data))
+            meta.with_name('keylog.txt').write_text('NEVER_EXPORT')
+            # No ledger yet: nothing worth archiving.
             with self.assertRaises(ValueError):
                 archive(root)
             self.assertFalse((root / 'capture.zip').exists())
-            data['final_flush_acknowledged'] = True
-            meta.write_text(json.dumps(data))
-            meta.with_name('keylog.txt').write_text('NEVER_EXPORT')
+            meta.with_name('ledger.bin').write_bytes(b'captured')
+            # A game closed before STOP loses the final flush, not the ledger.
             archive(root)
             with zipfile.ZipFile(root / 'capture.zip') as output:
                 self.assertIsNone(output.testzip())
-                self.assertEqual(output.namelist(), ['metadata.json'])
+                self.assertEqual(output.namelist(), ['metadata.json', 'ledger.bin'])
+                self.assertIs(json.loads(output.read('metadata.json'))['final_flush_acknowledged'], False)
                 self.assertNotIn(b'NEVER_EXPORT', output.read('metadata.json'))
 
-    def test_session_title_and_youtube_link(self):
+    def test_failed_sink_is_refused(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            meta = root / 'captures/session/dtls/meta.json'
+            meta.parent.mkdir(parents=True)
+            meta.write_text(json.dumps(dict(started_at_utc='start', stopped_at_utc='stop',
+                ledger_bytes_received=8, ledger_batches_received=1,
+                final_flush_acknowledged=True, sink_write_succeeded=False)))
+            meta.with_name('ledger.bin').write_bytes(b'captured')
+            with self.assertRaises(ValueError):
+                archive(root)
+
+    def test_session_title_and_video(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             meta = root / 'captures/session/dtls/meta.json'
@@ -40,15 +54,15 @@ class ArchiveTests(unittest.TestCase):
             meta.write_text(json.dumps(dict(started_at_utc='start', stopped_at_utc='stop',
                 ledger_bytes_received=12, ledger_batches_received=1,
                 final_flush_acknowledged=True, sink_write_succeeded=True)))
-            url = 'https://www.youtube.com/watch?v=12345678901'
             (root / 'session.json').write_text(json.dumps(dict(name='Session à', id='abc',
-                youtubeUrl=url, streamKey='NEVER_EXPORT')))
+                streamKey='NEVER_EXPORT')))
+            meta.with_name('ledger.bin').write_bytes(b'captured')
             (root / 'gameplay.mkv').write_bytes(b'LOCAL_VIDEO_ONLY')
             archive(root)
             with zipfile.ZipFile(root / 'capture.zip') as output:
-                self.assertEqual(set(output.namelist()), {'metadata.json', 'youtube.txt'})
+                self.assertEqual(set(output.namelist()), {'metadata.json', 'ledger.bin', 'gameplay.mkv'})
+                self.assertEqual(output.read('gameplay.mkv'), b'LOCAL_VIDEO_ONLY')
                 self.assertEqual(json.loads(output.read('metadata.json'))['name'], 'Session à')
-                self.assertEqual(output.read('youtube.txt').decode().strip(), url)
                 self.assertNotIn(b'NEVER_EXPORT', output.read('metadata.json'))
 
     def test_raw_export_is_explicit_and_excludes_keylog(self):
@@ -67,7 +81,7 @@ class ArchiveTests(unittest.TestCase):
                 archive(root)
             with zipfile.ZipFile(root / 'capture.zip') as output:
                 self.assertEqual(output.read('captures/session/dtls/ledger.bin'), b'raw')
-                self.assertNotIn('gameplay.mkv', output.namelist())
+                self.assertEqual(output.read('ledger.bin'), b'raw')
                 self.assertFalse(any('keylog' in name or 'stream.key' in name for name in output.namelist()))
 
     def test_symlink_metadata_rejected(self):

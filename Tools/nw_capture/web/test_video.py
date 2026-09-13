@@ -13,7 +13,7 @@ class VideoTests(unittest.TestCase):
     def test_stop_signals_encoder_once(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            fake = root / 'ffmpeg'
+            fake = root / 'gpu-screen-recorder'
             fake.write_text('''#!/usr/bin/env python3
 import signal,time,pathlib
 count=0
@@ -25,12 +25,11 @@ pathlib.Path('fake-ready').touch()
 while count==0: time.sleep(.01)
 time.sleep(.7)
 pathlib.Path('signals').write_text(str(count))
-raise SystemExit(255)
+raise SystemExit(0)
 ''')
             fake.chmod(0o700)
             env = dict(os.environ, PATH=directory + os.pathsep + os.environ['PATH'])
-            env.pop('YOUTUBE_KEY_FILE', None)
-            process = subprocess.Popen([sys.executable, str(Path(__file__).with_name('video.py')), directory, '5'], env=env)
+            process = subprocess.Popen([sys.executable, str(Path(__file__).with_name('video.py')), directory], env=env)
             try:
                 deadline = time.monotonic() + 3
                 while not (root / 'fake-ready').exists():
