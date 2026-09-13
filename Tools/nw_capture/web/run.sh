@@ -15,6 +15,22 @@ if [[ -z ${WAYLAND_DISPLAY:-}${DISPLAY:-} ]]; then
 fi
 node=$(command -v "${CAPTURE_NODE:-node}" || true)
 [[ -n $node ]] || { echo "node is not on PATH; install Node 22.18 or newer, or set CAPTURE_NODE" >&2; exit 1; }
+url="http://127.0.0.1:${PORT:-8787}"
+lock=${CAPTURE_DATA:-"$here/../captures/web"}/owner
+# Answer the running server here: node only sees the lock, and a stack trace is no answer.
+if owner=$(cat "$lock" 2>/dev/null) && [[ $owner =~ ^[0-9]+$ ]] && kill -0 "$owner" 2>/dev/null; then
+    echo "A capture server is already running as PID $owner on $url"
+    state=$(curl -fsS --max-time 5 "$url/api/session" 2>/dev/null | sed -n 's/.*"state":"\([A-Z]*\)".*/\1/p')
+    if [[ -n $state ]]; then echo "Its session is $state"; fi
+    case $state in STARTING|RUNNING|STOPPING) echo "Restarting it now would interrupt that capture" ;; esac
+    [[ -t 0 ]] || { echo "Use that server, or stop it with 'kill $owner'" >&2; exit 1; }
+    read -rp "Restart it and lose the running session? [y/N] " answer
+    [[ ${answer:-n} == [yY] ]] || { echo "Leaving it alone. Open $url"; exit 0; }
+    kill "$owner"
+    for _ in $(seq 60); do kill -0 "$owner" 2>/dev/null || break; sleep 0.5; done
+    if kill -0 "$owner" 2>/dev/null; then echo "PID $owner is still alive after 30s; check the host" >&2; exit 1; fi
+fi
+
 client="$STEAM_DIR/steamapps/common/SteamLinuxRuntime_4/pressure-vessel/bin/steam-runtime-launch-client"
 # Enter Steam's official launch context, not a direct Proton launch over SSH.
 settings=("STEAM_DIR=$STEAM_DIR" "CAPTURE_PYTHON=$CAPTURE_PYTHON")
