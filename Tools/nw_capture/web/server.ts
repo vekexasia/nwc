@@ -204,5 +204,5 @@ const timer = setInterval(() => {
   }
 }, 500);
 for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => { closing = true; stop(); });
-server.on('error', () => { closing = true; stop(); process.exitCode = 1; });
+server.on('error', (error) => { console.error(`Cannot serve on 127.0.0.1:${port}: ${error.message}`); closing = true; stop(); process.exitCode = 1; });
 server.listen(port, '127.0.0.1', () => console.log(`Capture: http://127.0.0.1:${port}`));

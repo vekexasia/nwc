@@ -3,7 +3,18 @@ set -euo pipefail
 here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 export STEAM_DIR=${STEAM_DIR:-"$HOME/.local/share/Steam"}
 export CAPTURE_PYTHON=${CAPTURE_PYTHON:-"$(cd "$here/../../.." && pwd)/.venv-capture/bin/python"}
-node=$(command -v "${CAPTURE_NODE:-node}")
+steam_pid=$(pgrep -x steam | head -1 || true)
+[[ -n $steam_pid ]] || { echo "Steam is not running; start Steam and the game first" >&2; exit 1; }
+# An SSH shell has no graphical session: take it from the Steam process that has one.
+if [[ -z ${WAYLAND_DISPLAY:-}${DISPLAY:-} ]]; then
+    while IFS= read -r -d '' entry; do
+        case $entry in
+            DISPLAY=*|WAYLAND_DISPLAY=*|XDG_SESSION_TYPE=*|XAUTHORITY=*|XDG_RUNTIME_DIR=*|DBUS_SESSION_BUS_ADDRESS=*) export "${entry?}" ;;
+        esac
+    done < "/proc/$steam_pid/environ"
+fi
+node=$(command -v "${CAPTURE_NODE:-node}" || true)
+[[ -n $node ]] || { echo "node is not on PATH; install Node 22.18 or newer, or set CAPTURE_NODE" >&2; exit 1; }
 client="$STEAM_DIR/steamapps/common/SteamLinuxRuntime_4/pressure-vessel/bin/steam-runtime-launch-client"
 # Enter Steam's official launch context, not a direct Proton launch over SSH.
 settings=("STEAM_DIR=$STEAM_DIR" "CAPTURE_PYTHON=$CAPTURE_PYTHON")
