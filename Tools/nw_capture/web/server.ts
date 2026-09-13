@@ -1,7 +1,7 @@
 import http from 'node:http';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, lstatSync, statfsSync, createReadStream } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync, lstatSync, statSync, statfsSync, createReadStream } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -194,8 +194,11 @@ const server = http.createServer(async (req, res) => {
   const asset = Object.hasOwn(assets, req.url ?? '') ? assets[req.url ?? ''] : undefined;
   if (asset) { res.writeHead(200, { 'Content-Type': asset[1] }); res.end(readFileSync(join(here, asset[0]))); return; }
   if (session.download && req.url === session.download && ['STOPPED', 'ERROR'].includes(session.state)) {
-    res.writeHead(200, { 'Content-Type': 'application/zip', 'Content-Disposition': `attachment; filename="${session.filename}.zip"` });
-    const stream = createReadStream(join(directory(), 'capture.zip'));
+    // Content-Length, so a download cut short is reported as failed instead of
+    // landing as a short file that looks complete.
+    const archive = join(directory(), 'capture.zip');
+    res.writeHead(200, { 'Content-Type': 'application/zip', 'Content-Disposition': `attachment; filename="${session.filename}.zip"`, 'Content-Length': statSync(archive).size });
+    const stream = createReadStream(archive);
     stream.on('error', () => res.destroy()); res.on('close', () => stream.destroy()); stream.pipe(res); return;
   }
   reply(404, {});

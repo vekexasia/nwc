@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, writeFileSync, chmodSync, rmSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, chmodSync, rmSync, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -76,6 +76,8 @@ try {
   assert.equal(response.headers.get('content-disposition'), 'attachment; filename="Test-session-a-safe.zip"');
   const zip = join(temp, 'download.zip');
   writeFileSync(zip, Buffer.from(await response.arrayBuffer()));
+  // Announced length must match the bytes served, or a truncated download looks complete.
+  assert.equal(Number(response.headers.get('content-length')), statSync(zip).size);
   const check = spawn('python3', ['-c', "import zipfile,sys; z=zipfile.ZipFile(sys.argv[1]); assert z.testzip() is None; assert set(z.namelist()) == {'metadata.json','ledger.bin','gameplay.mkv'}; assert z.read('gameplay.mkv') == b'FAKE_VIDEO_FINALIZED'; assert b'SECRET' not in z.read('metadata.json')", zip], { stdio: 'inherit' });
   assert.equal((await once(check, 'close'))[0], 0);
   for (const path of ['/download/../../owner', '/download/%2e%2e/owner', '/__proto__', '/constructor', '/logs/game-server.log', '/captures/keylog.txt']) assert.equal((await fetch(base + path)).status, 404);
