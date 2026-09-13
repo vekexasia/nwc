@@ -102,7 +102,22 @@ try {
     assert.equal(await ask(`192.168.3.50:${lanPort}`), 200);
     assert.equal(await ask(`evil.test:${lanPort}`), 403);
   } finally { lan.kill('SIGTERM'); await once(lan, 'close'); }
-  console.log('PASS: concurrent start/stop, startup cancellation, shared snapshot, child-exit gate, video in ZIP, ZIP allowlist, traversal, origin, LAN host allowlist, failure, SIGTERM cleanup');
+
+  // Behind a tunnel: its hostname is served and its https origin may act; other names may not.
+  const proxyPort = port + 2;
+  const proxy = spawn(process.execPath, [join(here, 'server.ts')], { env: { ...process.env, PORT: String(proxyPort), CAPTURE_PUBLIC_ORIGIN: 'https://cap.example.test', CAPTURE_DATA: join(temp, 'proxy'), CAPTURE_PYTHON: fake, CAPTURE_VIDEO: '0' }, stdio: ['ignore', 'pipe', 'inherit'] });
+  try {
+    await once(proxy.stdout!, 'data');
+    const send = (host: string, headers: Record<string, string> = {}, method = 'GET') => new Promise<number>((resolve, reject) => {
+      const request = httpRequest({ host: '127.0.0.1', port: proxyPort, path: method === 'GET' ? '/api/session' : '/api/stop', method, headers: { Host: host, ...headers } }, response => { response.resume(); resolve(response.statusCode!); });
+      request.on('error', reject); request.end();
+    });
+    assert.equal(await send('cap.example.test'), 200);
+    assert.equal(await send('cap.evil.test'), 403);
+    assert.notEqual(await send('cap.example.test', { Origin: 'https://cap.example.test', 'X-Capture-Action': '1' }, 'POST'), 403);
+    assert.equal(await send('cap.example.test', { Origin: 'https://cap.evil.test', 'X-Capture-Action': '1' }, 'POST'), 403);
+  } finally { proxy.kill('SIGTERM'); await once(proxy, 'close'); }
+  console.log('PASS: concurrent start/stop, startup cancellation, shared snapshot, child-exit gate, video in ZIP, ZIP allowlist, traversal, origin, LAN host allowlist, tunnel origin, failure, SIGTERM cleanup');
 } finally {
   if (server.exitCode === null) { server.kill('SIGTERM'); await once(server, 'close'); }
   rmSync(temp, { recursive: true, force: true });
