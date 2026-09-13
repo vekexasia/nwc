@@ -13,7 +13,7 @@ function integer(name: string, fallback: number, max: number) {
   return Number(value);
 }
 const port = integer('PORT', 8787, 65535);
-const videoEnabled = process.env.CAPTURE_VIDEO === '1';
+const videoEnabled = process.env.CAPTURE_VIDEO !== '0';
 // The gpu-screen-recorder backend writes one local file and cannot also push RTMPS.
 if (process.env.YOUTUBE_KEY_FILE || process.env.YOUTUBE_OAUTH_CONFIG) throw Error('YouTube streaming was removed with the ffmpeg backend');
 // One ceiling for the output root; a session may use half of it, the ZIP copies the rest.

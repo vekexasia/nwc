@@ -9,7 +9,8 @@ Uses the existing `capture_proton.py` collector, not a simulated collector.
 Requires Node >=22.18 (native TypeScript stripping; tested 26.7.0), Python with
 `../requirements.txt` in a private venv, matching Windows Frida server beside
 `capture_proton.py`, Proton 11.0 and SteamLinuxRuntime_4. No npm packages/build.
-With `CAPTURE_VIDEO=1`, `gpu-screen-recorder` must be installed on the host.
+Video is on by default, so `gpu-screen-recorder` must be installed on the host;
+set `CAPTURE_VIDEO=0` to run without it.
 Prepare the existing isolated Python environment as in
 [the host guide](../../../docs/SETUP.md).
 
@@ -23,7 +24,7 @@ Optional operator environment, not browser inputs:
 
 - `STEAM_DIR`: Steam installation containing steamapps; default `$HOME/.local/share/Steam`.
 - `CAPTURE_PYTHON`: absolute Python executable; default repo `.venv-capture/bin/python`.
-- `CAPTURE_VIDEO`: `1` records gameplay video alongside the collector (default off).
+- `CAPTURE_VIDEO`: records gameplay video alongside the collector; on by default, `0` disables it.
 - `VIDEO_TARGET`: gpu-screen-recorder capture target, default `screen`; a monitor
   name from `gpu-screen-recorder --list-monitors` selects a single display. Window
   capture is X11 only (`-w <window id>`, `focused`); on Wayland use `portal`, which
