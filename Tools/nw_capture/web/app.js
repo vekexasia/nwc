@@ -32,7 +32,7 @@ function render(value) {
 }
 async function poll() {
   try {
-    const response = await fetch('/api/session', { signal: AbortSignal.timeout(3000) });
+    const response = await fetch('/api/session');
     if (!response.ok) throw Error('Server unavailable');
     render(await response.json()); element('connection').textContent = 'Connected to shared session';
   } catch {
@@ -43,7 +43,7 @@ async function poll() {
 for (const action of ['start', 'stop']) element(action).onclick = async () => {
   pending = true; element('start').disabled = element('stop').disabled = true;
   try {
-    const response = await fetch(`/api/${action}`, { method: 'POST', headers: { 'X-Capture-Action': '1', 'Content-Type': 'application/json' }, body: action === 'start' ? JSON.stringify({ name: element('session-name').value }) : undefined, signal: AbortSignal.timeout(5000) });
+    const response = await fetch(`/api/${action}`, { method: 'POST', headers: { 'X-Capture-Action': '1', 'Content-Type': 'application/json' }, body: action === 'start' ? JSON.stringify({ name: element('session-name').value }) : undefined });
     if (!response.ok) { const data = await response.json(); element('error').textContent = data.error || 'Another client already changed this session.'; }
   } catch { element('error').textContent = 'Request uncertain; checking shared server state.'; }
   finally { pending = false; }

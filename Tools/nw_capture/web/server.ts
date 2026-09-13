@@ -106,14 +106,7 @@ function update() {
       if (session.videoBytes > 0 && session.videoState === 'STARTING') session.videoState = 'ENCODING';
     }
     if (size(directory()) > (videoEnabled ? storage / 2 : 256 * 1024 * 1024)) { fail('Capture size limit reached.'); stop(); }
-    if (session.state === 'STARTING' && Date.now() - session.startedAt > 30000) { fail('Startup deadline exceeded.'); stop(); }
   } catch { fail('Capture monitoring failed; stop requested.'); stop(); }
-  if (stopAt && Date.now() - stopAt > 30000 && (child?.pid || video?.pid)) {
-    cleanupUncertain = true;
-    fail('Cleanup deadline exceeded; capture incomplete. Check host before restarting.');
-    try { for (const owned of [child, video]) if (owned?.pid) process.kill(-owned.pid, Date.now() - stopAt > 45000 ? 'SIGKILL' : 'SIGTERM'); }
-    catch { fail('Unable to signal owned child; check host.'); }
-  }
 }
 function saveSession() {
   writeFileSync(join(directory(), 'session.json'), JSON.stringify({ name: session.name, id: session.id, videoState: session.videoState, error: session.error }));
@@ -201,7 +194,7 @@ const server = http.createServer(async (req, res) => {
   }
   reply(404, {});
 });
-server.requestTimeout = 5000; server.headersTimeout = 5000; server.maxConnections = 32;
+server.requestTimeout = 0; server.headersTimeout = 0; server.timeout = 0; server.keepAliveTimeout = 0; server.maxConnections = 32;
 const timer = setInterval(() => {
   update();
   if (closing && !child && !video && !active()) {
