@@ -30,7 +30,8 @@ catch {
   const owner = Number(readFileSync(lock, 'utf8').trim());
   let alive = true;
   try { process.kill(owner, 0); } catch (error) { alive = (error as NodeJS.ErrnoException).code !== 'ESRCH'; }
-  if (!Number.isInteger(owner) || owner < 1 || alive) throw Error('Another capture server owns this output directory');
+  if (!Number.isInteger(owner) || owner < 1) throw Error(`Unreadable lock ${lock}; check the host, then delete the file to take over`);
+  if (alive) throw Error(`Capture server already running as PID ${owner}: open http://127.0.0.1:${port} to use it, or stop it with 'kill ${owner}' and wait for it to exit`);
   writeFileSync(lock, String(process.pid), { mode: 0o600 });
 }
 let child: ChildProcess | null = null;
