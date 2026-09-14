@@ -1,43 +1,71 @@
 # New World Capture
 
-Tools to record one New World session on Linux: the capture CLI, the shared web
-controls and the resulting ZIP. English only.
+Capture a New World session on Linux from a local web page. Each completed
+session produces a ZIP containing network data, metadata and, when enabled,
+gameplay video.
 
-## Start here
+## Requirements
 
-- [Capture session quickstart](docs/QUICKSTART.md): one-time setup, then START/STOP per session.
-- [Local and remote setup](docs/SETUP.md): Steam/Proton, dependencies and the web service.
-- [Web application](Tools/nw_capture/web/README.md): START/STOP, environment variables, storage and security.
-- [Capture CLI](Tools/nw_capture/README.md): attach modes, cleanup and limitations.
-- [External references and attribution](docs/REFERENCES.md).
+- Linux with Steam and New World installed.
+- Node.js 22.18 or newer.
+- Python 3 with `venv`.
+- Windows x64 Frida server 17.9.10, matching the Python client. It is not
+  bundled; the setup script downloads it.
+- `gpu-screen-recorder` when recording video.
 
-From this directory, after installing the dependencies in the setup guide:
+## Set up
+
+Follow the one-time [setup guide](docs/QUICKSTART.md), then run from the
+repository root:
 
 ```sh
-bash Tools/nw_capture/web/run.sh
+bash Tools/nw_capture/setup.sh
 ```
 
-Open `http://127.0.0.1:8787`. The game must already be running. This command is
-for capture controls, not game launch. Capture data is shared across browser tabs.
-The ZIP contains the ledger, the metadata and, when video is enabled, the recording.
+The script prepares the local capture environment and reports anything still
+missing.
 
-## Scope and data
+## Capture a session
 
-`Tools/` includes our modified capture stack, Proton launcher, optional local
-login helper, web service and experimental offline decoder.
-`docs/` contains the setup and quickstart notes.
-Our local capture data is copied into `Tools/nw_capture/captures/` and gitignored.
-Those files can contain sensitive decrypted traffic: keep them private.
+1. Start Steam and New World, then enter the world.
+2. Start the capture server from the repository root:
+   ```sh
+   bash Tools/nw_capture/web/run.sh
+   ```
+   To capture without video, use:
+   ```sh
+   CAPTURE_VIDEO=0 bash Tools/nw_capture/web/run.sh
+   ```
+3. Open <http://127.0.0.1:8787>.
+4. Confirm the host checks are OK, enter a session name and select **START**.
+5. Wait for the page to show `RUNNING` and confirm the counters are increasing.
+6. When finished, select **STOP** before closing the game.
+7. Wait for the ZIP download to complete, then stop the server with Ctrl+C.
 
-External Catalog/game dumps, First Light source, NWDB assets and the other user's
-Hive capture are **not** included. Refer to their sources instead. No OAuth tokens,
-SSH keys or Steam profiles were imported. Runtime dependencies, including the
-checksum-verified Frida server, are installed locally but excluded from Git.
+Closing or reopening the browser does not stop an active capture.
 
-This repository has independent Git metadata, no inherited history and no remote.
-The original workspace and running gaming-host service were not moved or stopped.
+## Output and privacy
 
-## Checks (no game or live service needed)
+Captures remain under `Tools/nw_capture/captures/` and are ignored by Git.
+The downloaded ZIP contains:
+
+- `metadata.json`: session details and capture counters.
+- `ledger.bin`: captured network data.
+- `gameplay.mkv`: gameplay video, when video recording is enabled.
+
+Capture files can contain sensitive traffic. Keep them private and do not
+commit or publish them.
+
+## Documentation
+
+- [Capture session quickstart](docs/QUICKSTART.md)
+- [Local and remote setup](docs/SETUP.md)
+- [Web controls and configuration](Tools/nw_capture/web/README.md)
+- [Capture CLI and offline tools](Tools/nw_capture/README.md)
+
+## Checks
+
+These checks do not start the game or a live capture service:
 
 ```sh
 .venv-capture/bin/python -m unittest discover -s Tools/nw_capture -p 'test_*.py'
@@ -48,12 +76,8 @@ node Tools/nw_capture/web/test.ts
 node Tools/nw_capture/web/test_app.ts
 ```
 
-Node executes TypeScript directly; these commands do not perform static type checking.
-Mocked tests do not establish live game compatibility or anti-cheat safety.
-
 ## License
 
-AGPL-3.0, preserving the upstream license in [LICENSE](LICENSE). Capture and decoding
-components derive from [Coldzer0/Aeternum-World](https://github.com/Coldzer0/Aeternum-World)
-and include our local changes. See [attribution](docs/REFERENCES.md); this is not a
-claim that all code or game data was originally authored by us.
+[AGPL-3.0](LICENSE). Capture and decoding components derive from
+[Coldzer0/Aeternum-World](https://github.com/Coldzer0/Aeternum-World). See
+[external references and attribution](docs/REFERENCES.md).
