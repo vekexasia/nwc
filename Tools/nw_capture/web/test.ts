@@ -32,16 +32,35 @@ else:
     meta.mkdir(parents=True)
     (meta / 'keylog.txt').write_text('SECRET')
     (meta / 'ledger.bin').write_bytes(b'LEDGER')
+    (root / 'status.tmp').write_text('TRANSIENT')
     (root / 'status.json').write_text(json.dumps(dict(bytes=42,count=2,errors=0)))
     while not (root / 'stop').exists(): time.sleep(0.02)
     time.sleep(0.3)
     (meta / 'meta.json').write_text(json.dumps(dict(started_at_utc='2026-01-01',stopped_at_utc='2026-01-01',ledger_bytes_received=42,ledger_batches_received=2,final_flush_acknowledged=True,sink_write_succeeded=True,secret='SECRET')))
 `);
 chmodSync(fake, 0o700);
+// Deterministically simulate status.tmp being renamed between readdir and lstat.
+const preload = join(temp, 'missing-status-tmp.mjs');
+writeFileSync(preload, `
+import fs from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
+const lstatSync = fs.lstatSync;
+fs.lstatSync = function(path, ...args) {
+  if (String(path).endsWith('/status.tmp')) {
+    process.stderr.write('simulated ENOENT\\n');
+    throw Object.assign(Error('simulated rename race'), { code: 'ENOENT', syscall: 'lstat' });
+  }
+  return lstatSync.call(this, path, ...args);
+};
+syncBuiltinESMExports();
+`);
 const port = 18787;
 const base = `http://127.0.0.1:${port}`;
 const data = join(temp, 'data');
-const server = spawn(process.execPath, [join(here, 'server.ts')], { env: { ...process.env, PORT: String(port), CAPTURE_DATA: data, CAPTURE_PYTHON: fake, CAPTURE_VIDEO: '1' }, stdio: ['ignore', 'pipe', 'inherit'] });
+const server = spawn(process.execPath, ['--import', preload, join(here, 'server.ts')], { env: { ...process.env, PORT: String(port), CAPTURE_DATA: data, CAPTURE_PYTHON: fake, CAPTURE_VIDEO: '1' }, stdio: ['ignore', 'pipe', 'pipe'] });
+let serverErrors = '';
+server.stderr!.setEncoding('utf8');
+server.stderr!.on('data', chunk => { serverErrors += chunk; });
 const state = async () => (await fetch(base + '/api/session')).json();
 const action = (name: string) => fetch(base + '/api/' + name, { method: 'POST', headers: { Origin: base, 'X-Capture-Action': '1', 'Content-Type': 'application/json' }, body: name === 'start' ? JSON.stringify({ name: 'Test session à / safe' }) : undefined });
 async function waitFor(predicate: () => Promise<boolean>) {
@@ -62,6 +81,7 @@ try {
   assert.equal(starts.filter(r => r.status === 409).length, 7);
   const id = (await state()).id;
   await waitFor(async () => (await state()).state === 'RUNNING');
+  await waitFor(async () => serverErrors.includes('simulated ENOENT'));
   assert.equal((await state()).id, id);
   assert.equal((await state()).bytes, 42);
   await Promise.all([action('stop'), action('stop')]);
@@ -81,6 +101,14 @@ try {
   const check = spawn('python3', ['-c', "import zipfile,sys; z=zipfile.ZipFile(sys.argv[1]); assert z.testzip() is None; assert set(z.namelist()) == {'metadata.json','ledger.bin','gameplay.mkv'}; assert z.read('gameplay.mkv') == b'FAKE_VIDEO_FINALIZED'; assert b'SECRET' not in z.read('metadata.json')", zip], { stdio: 'inherit' });
   assert.equal((await once(check, 'close'))[0], 0);
   for (const path of ['/download/../../owner', '/download/%2e%2e/owner', '/__proto__', '/constructor', '/logs/game-server.log', '/captures/keylog.txt']) assert.equal((await fetch(base + path)).status, 404);
+
+  await action('start'); await waitFor(async () => (await state()).state === 'RUNNING');
+  const status = join(data, (await state()).id, 'status.json');
+  rmSync(status); mkdirSync(status);
+  await waitFor(async () => (await state()).state === 'ERROR');
+  assert.equal((await state()).error, 'Capture monitoring failed: EISDIR during read; stop requested.');
+  assert.match(serverErrors, /Capture monitoring failed; requesting stop[\s\S]*EISDIR/);
+
   writeFileSync(join(data, 'fail'), '');
   await action('start'); await waitFor(async () => (await state()).state === 'ERROR');
   assert.ok((await state()).error); assert.equal((await state()).download, '');
@@ -119,7 +147,7 @@ try {
     assert.notEqual(await send('cap.example.test', { Origin: 'https://cap.example.test', 'X-Capture-Action': '1' }, 'POST'), 403);
     assert.equal(await send('cap.example.test', { Origin: 'https://cap.evil.test', 'X-Capture-Action': '1' }, 'POST'), 403);
   } finally { proxy.kill('SIGTERM'); await once(proxy, 'close'); }
-  console.log('PASS: concurrent start/stop, startup cancellation, shared snapshot, child-exit gate, video in ZIP, ZIP allowlist, traversal, origin, LAN host allowlist, tunnel origin, failure, SIGTERM cleanup');
+  console.log('PASS: concurrent start/stop, startup cancellation, shared snapshot, child-exit gate, video in ZIP, ZIP allowlist, traversal, origin, LAN host allowlist, tunnel origin, temp rename race, monitoring detail, failure, SIGTERM cleanup');
 } finally {
   if (server.exitCode === null) { server.kill('SIGTERM'); await once(server, 'close'); }
   rmSync(temp, { recursive: true, force: true });

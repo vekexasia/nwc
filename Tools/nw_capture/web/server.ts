@@ -59,6 +59,12 @@ function stop() {
   }
 }
 function fail(message: string) { session.error = message; session.errors = Math.max(1, session.errors); }
+function publicError(error: unknown) {
+  if (error instanceof SyntaxError) return 'Invalid status JSON';
+  if (!(error instanceof Error)) return 'Unknown error';
+  const { code, syscall } = error as NodeJS.ErrnoException;
+  return typeof code === 'string' ? `${code}${typeof syscall === 'string' ? ` during ${syscall}` : ''}` : error.message;
+}
 let preflight = { at: 0, value: {} };
 function ready() {
   if (Date.now() - preflight.at < 2000) return preflight.value;
@@ -85,7 +91,11 @@ function size(path: string): number {
   for (const entry of entries) {
     const file = join(path, entry.name);
     if (entry.isSymbolicLink()) throw Error('Unsafe output');
-    total += entry.isDirectory() ? size(file) : lstatSync(file).size;
+    try { total += entry.isDirectory() ? size(file) : lstatSync(file).size; }
+    catch (error) {
+      // The producer may rename a temporary file after readdir returned it.
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
   }
   return total;
 }
@@ -111,7 +121,11 @@ function update() {
       if (session.videoBytes > 0 && session.videoState === 'STARTING') session.videoState = 'ENCODING';
     }
     if (size(directory()) > (videoEnabled ? storage / 2 : 256 * 1024 * 1024)) { fail('Capture size limit reached.'); stop(); }
-  } catch { fail('Capture monitoring failed; stop requested.'); stop(); }
+  } catch (error) {
+    console.error('Capture monitoring failed; requesting stop.', error);
+    fail(`Capture monitoring failed: ${publicError(error)}; stop requested.`);
+    stop();
+  }
 }
 function saveSession() {
   writeFileSync(join(directory(), 'session.json'), JSON.stringify({ name: session.name, id: session.id, videoState: session.videoState, error: session.error }));
