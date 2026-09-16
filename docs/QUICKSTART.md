@@ -60,9 +60,10 @@ picture, except that alt-tabbing records the desktop instead of the game. `VIDEO
 sources with `|`, for example `default_output|default_input` to add the microphone.
 Check that it is not pointing at a microphone by mistake.
 
-A session has no time limit: it records until STOP. It also ends on its own when the
-output directory passes half of `CAPTURE_STORAGE_GB`, 40 GB by default, which is about
-seven hours at the default bitrate.
+A session has no time limit. Without video it has no application file-size limit and
+records until STOP or failure. With video it also ends when the output directory
+passes half of `CAPTURE_STORAGE_GB`, 40 GB by default, which is about seven hours at
+the default bitrate.
 
 ## Every session
 
@@ -128,6 +129,7 @@ The archive holds raw game traffic, so treat it as private and do not publish it
 One session at a time, one server for every browser tab. The page is loopback only,
 without authentication: anyone with access to the machine, or to a tunnel to that port,
 controls the session. Old sessions are never deleted automatically; the server refuses
-to start a new one after 10 retained directories or when the storage ceiling is reached.
+to start a new one after 10 retained directories or, with video enabled, when the
+storage ceiling is reached.
 
 Full behaviour, security notes and verification history: [web/README.md](../Tools/nw_capture/web/README.md).

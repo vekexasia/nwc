@@ -37,8 +37,9 @@ Optional operator environment, not browser inputs:
 - `CAPTURE_EXPORT_RAW`: `1` adds capture payloads to ZIP. Sensitive: do not share publicly.
 - `CAPTURE_NODE`: Node executable; default resolved `node` on the launching PATH.
 - `PORT`: loopback HTTP port, default 8787.
-- `CAPTURE_STORAGE_GB`: output root ceiling, default 40 with video, 1 without.
-  A session stops at half of it, because the ZIP stores a second copy of the video.
+- `CAPTURE_STORAGE_GB`: video-mode output root ceiling, default 40. A video
+  session stops at half of it because the ZIP stores a second copy of the video.
+  It is ignored when video is disabled.
 - `CAPTURE_DATA`: private output root; default `Tools/nw_capture/captures/web` (gitignored).
 - For SSH launches, configure `HOME`, `DISPLAY`, `XAUTHORITY`, `XDG_RUNTIME_DIR`
   and `DBUS_SESSION_BUS_ADDRESS` for the gaming user. Start in a directory that
@@ -90,10 +91,11 @@ newly opened page observing completion. No local/session storage controls captur
 Browser download policies can block the automatic attempt; the explicit button
 always permits retry. Only the latest session is addressable through HTTP.
 
-There is no capture time limit: a session runs until STOP, the storage ceiling, or a
-failure. YouTube streaming and its OAuth lifecycle were removed with the ffmpeg
-backend; the server refuses to start when `YOUTUBE_KEY_FILE` or `YOUTUBE_OAUTH_CONFIG`
-is still set.
+There is no capture time limit. Without video there is also no application file-size
+limit: a session runs until STOP or a failure. With video it can also stop at the
+storage ceiling. YouTube streaming and its OAuth lifecycle were removed with the
+ffmpeg backend; the server refuses to start when `YOUTUBE_KEY_FILE` or
+`YOUTUBE_OAUTH_CONFIG` is still set.
 
 The ZIP contains aggregate `metadata.json`, the raw `ledger.bin`, measured
 `fragments.jsonl` when replicated state was observed and, when video is enabled,
@@ -109,15 +111,16 @@ Video errors preserve an otherwise valid capture ZIP and remain visible as ERROR
 Recording uses gpu-screen-recorder (X11 and Wayland, GPU encoding) at CBR, default
 H.264 with Opus audio. No video source is configured through HTTP.
 
-Limits: 10 retained session directories, `CAPTURE_STORAGE_GB` admission ceiling,
-half of it as the per-session soft stop threshold (256 MiB without video) sampled
-every 500 ms, 2 GiB hard limit
-per worker file, 32 HTTP connections, 5-second request/header deadlines, 30-second
-startup deadline. Storage thresholds are stop/admission limits, not filesystem
-quotas; writes and extraction can overshoot between checks. Use a filesystem quota
-if a hard total-disk limit is required. Old captures are never automatically deleted;
-operator removal is required when admission limits are reached. The collector's
-existing extraction is not a streaming, constant-memory pipeline.
+Limits: 10 retained session directories in both modes. With video enabled,
+`CAPTURE_STORAGE_GB` is the admission ceiling, half of it is the per-session soft
+stop threshold sampled every 500 ms, and worker files have a 2 GiB hard limit.
+Without video there is no application file-size limit. Both modes allow 32 HTTP
+connections and have 5-second request/header deadlines and a 30-second startup
+deadline. Video storage thresholds are stop/admission limits, not filesystem quotas;
+writes and extraction can overshoot between checks. Use a filesystem quota if a hard
+total-disk limit is required. Old captures are never automatically deleted; operator
+removal is required at 10 retained directories. The collector's existing extraction
+is not a streaming, constant-memory pipeline.
 
 After STOP, the watchdog requests termination of only the owned detached child
 process group at 30 seconds and SIGKILL at 45 seconds. A watchdog intervention

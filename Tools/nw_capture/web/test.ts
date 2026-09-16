@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, writeFileSync, chmodSync, rmSync, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, chmodSync, rmSync, existsSync, mkdirSync, readFileSync, statSync, truncateSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -120,7 +120,9 @@ try {
 
   // Bound to a LAN address: an IP Host is served, a name is still refused.
   const lanPort = port + 1;
-  const lan = spawn(process.execPath, [join(here, 'server.ts')], { env: { ...process.env, PORT: String(lanPort), CAPTURE_HOST: '0.0.0.0', CAPTURE_DATA: join(temp, 'lan'), CAPTURE_PYTHON: fake, CAPTURE_VIDEO: '0' }, stdio: ['ignore', 'pipe', 'inherit'] });
+  const lanBase = `http://127.0.0.1:${lanPort}`;
+  const lanData = join(temp, 'lan');
+  const lan = spawn(process.execPath, [join(here, 'server.ts')], { env: { ...process.env, PORT: String(lanPort), CAPTURE_HOST: '0.0.0.0', CAPTURE_DATA: lanData, CAPTURE_PYTHON: fake, CAPTURE_VIDEO: '0' }, stdio: ['ignore', 'pipe', 'inherit'] });
   try {
     await once(lan.stdout!, 'data');
     // fetch() forbids a custom Host header, so go through node:http.
@@ -131,6 +133,21 @@ try {
     assert.equal(await ask(`127.0.0.1:${lanPort}`), 200);
     assert.equal(await ask(`192.168.3.50:${lanPort}`), 200);
     assert.equal(await ask(`evil.test:${lanPort}`), 403);
+
+    // Capture-only mode ignores both the root storage ceiling and session file size.
+    const retained = join(lanData, 'retained');
+    writeFileSync(retained, ''); truncateSync(retained, 2 * 1024 ** 3);
+    const started = await fetch(lanBase + '/api/start', { method: 'POST', headers: { Origin: lanBase, 'X-Capture-Action': '1' }, body: JSON.stringify({ name: 'Unlimited capture' }) });
+    assert.equal(started.status, 202);
+    const lanState = async () => (await fetch(lanBase + '/api/session')).json();
+    await waitFor(async () => (await lanState()).state === 'RUNNING');
+    const lanSession = await lanState();
+    const oversized = join(lanData, lanSession.id, 'oversized');
+    writeFileSync(oversized, ''); truncateSync(oversized, 300 * 1024 ** 2);
+    writeFileSync(join(lanData, lanSession.id, 'status.json'), JSON.stringify({ bytes: 43, count: 2, errors: 0 }));
+    await waitFor(async () => (await lanState()).bytes === 43);
+    assert.equal((await lanState()).state, 'RUNNING');
+    assert.equal((await lanState()).error, '');
   } finally { lan.kill('SIGTERM'); await once(lan, 'close'); }
 
   // Behind a tunnel: its hostname is served and its https origin may act; other names may not.
@@ -147,7 +164,7 @@ try {
     assert.notEqual(await send('cap.example.test', { Origin: 'https://cap.example.test', 'X-Capture-Action': '1' }, 'POST'), 403);
     assert.equal(await send('cap.example.test', { Origin: 'https://cap.evil.test', 'X-Capture-Action': '1' }, 'POST'), 403);
   } finally { proxy.kill('SIGTERM'); await once(proxy, 'close'); }
-  console.log('PASS: concurrent start/stop, startup cancellation, shared snapshot, child-exit gate, video in ZIP, ZIP allowlist, traversal, origin, LAN host allowlist, tunnel origin, temp rename race, monitoring detail, failure, SIGTERM cleanup');
+  console.log('PASS: concurrent start/stop, startup cancellation, shared snapshot, child-exit gate, video in ZIP, ZIP allowlist, traversal, origin, LAN host allowlist, unlimited capture-only size, tunnel origin, temp rename race, monitoring detail, failure, SIGTERM cleanup');
 } finally {
   if (server.exitCode === null) { server.kill('SIGTERM'); await once(server, 'close'); }
   rmSync(temp, { recursive: true, force: true });

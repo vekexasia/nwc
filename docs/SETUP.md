@@ -118,7 +118,8 @@ export VIDEO_AUDIO_SOURCE=default_output
 
 Do not point `VIDEO_AUDIO_SOURCE` at a microphone by accident. The ZIP includes the
 video file itself, so keep at least twice the recording size free on disk.
-A session has no time limit: it runs until STOP or until the storage ceiling.
+A session has no time limit. Without video it has no application file-size limit and
+runs until STOP or failure; with video it can also stop at the storage ceiling.
 YouTube streaming was removed: the server refuses to start when `YOUTUBE_KEY_FILE`
 or `YOUTUBE_OAUTH_CONFIG` is set.
 

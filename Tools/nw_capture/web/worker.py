@@ -12,7 +12,8 @@ import nw_capture
 output = Path(sys.argv[1]).resolve()
 steam = sys.argv[2]
 parent_pid = os.getppid()
-resource.setrlimit(resource.RLIMIT_FSIZE, (2 * 1024 ** 3, 2 * 1024 ** 3))
+if os.environ.get('CAPTURE_VIDEO', '1') != '0':
+    resource.setrlimit(resource.RLIMIT_FSIZE, (2 * 1024 ** 3, 2 * 1024 ** 3))
 os.umask(0o077)
 import signal
 signal.signal(signal.SIGTERM, lambda *_: (output / 'stop').touch())

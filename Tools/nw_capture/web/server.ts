@@ -20,8 +20,8 @@ const publicHost = publicOrigin ? new URL(publicOrigin).host : '';
 const videoEnabled = process.env.CAPTURE_VIDEO !== '0';
 // The gpu-screen-recorder backend writes one local file and cannot also push RTMPS.
 if (process.env.YOUTUBE_KEY_FILE || process.env.YOUTUBE_OAUTH_CONFIG) throw Error('YouTube streaming was removed with the ffmpeg backend');
-// One ceiling for the output root; a session may use half of it, the ZIP copies the rest.
-const storage = integer('CAPTURE_STORAGE_GB', videoEnabled ? 40 : 1, 512) * 1024 * 1024 * 1024;
+// Video needs room for its source file and the ZIP copy; capture-only mode is unlimited.
+const storage = videoEnabled ? integer('CAPTURE_STORAGE_GB', 40, 512) * 1024 * 1024 * 1024 : 0;
 const python = process.env.CAPTURE_PYTHON ?? resolve(here, '../../../.venv-capture/bin/python');
 const steam = process.env.STEAM_DIR ?? join(process.env.HOME ?? '', '.local/share/Steam');
 const root = resolve(process.env.CAPTURE_DATA ?? join(here, '../captures/web'));
@@ -120,7 +120,7 @@ function update() {
       session.videoBytes = lstatSync(join(directory(), 'gameplay.mkv')).size;
       if (session.videoBytes > 0 && session.videoState === 'STARTING') session.videoState = 'ENCODING';
     }
-    if (size(directory()) > (videoEnabled ? storage / 2 : 256 * 1024 * 1024)) { fail('Capture size limit reached.'); stop(); }
+    if (videoEnabled && size(directory()) > storage / 2) { fail('Capture size limit reached.'); stop(); }
   } catch (error) {
     console.error('Capture monitoring failed; requesting stop.', error);
     fail(`Capture monitoring failed: ${publicError(error)}; stop requested.`);
@@ -151,7 +151,7 @@ function finish() {
 function launch(name: string) {
   if (closing || active()) return false;
   if (cleanupUncertain) throw Error('Operator cleanup required');
-  if (readdirSync(root).length >= 11 || size(root) > storage) throw Error('Private storage limit reached; operator must remove old captures.');
+  if (readdirSync(root).length >= 11 || (videoEnabled && size(root) > storage)) throw Error('Private storage limit reached; operator must remove old captures.');
   const id = randomUUID();
   mkdirSync(join(root, id), { mode: 0o700 });
   const filename = name.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 100) || 'capture';
