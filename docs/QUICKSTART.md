@@ -128,8 +128,8 @@ The archive holds raw game traffic, so treat it as private and do not publish it
 
 One session at a time, one server for every browser tab. The page is loopback only,
 without authentication: anyone with access to the machine, or to a tunnel to that port,
-controls the session. Old sessions are never deleted automatically; the server refuses
-to start a new one after 10 retained directories or, with video enabled, when the
-storage ceiling is reached.
+controls the session. Old sessions are never deleted automatically. With video enabled,
+the server refuses to start a new one after 10 retained directories or when the storage
+ceiling is reached; capture-only mode has no application storage limit.
 
 Full behaviour, security notes and verification history: [web/README.md](../Tools/nw_capture/web/README.md).

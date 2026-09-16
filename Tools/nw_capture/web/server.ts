@@ -151,7 +151,7 @@ function finish() {
 function launch(name: string) {
   if (closing || active()) return false;
   if (cleanupUncertain) throw Error('Operator cleanup required');
-  if (readdirSync(root).length >= 11 || (videoEnabled && size(root) > storage)) throw Error('Private storage limit reached; operator must remove old captures.');
+  if (videoEnabled && (readdirSync(root).length >= 11 || size(root) > storage)) throw Error('Private storage limit reached; operator must remove old captures.');
   const id = randomUUID();
   mkdirSync(join(root, id), { mode: 0o700 });
   const filename = name.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 100) || 'capture';

@@ -111,16 +111,15 @@ Video errors preserve an otherwise valid capture ZIP and remain visible as ERROR
 Recording uses gpu-screen-recorder (X11 and Wayland, GPU encoding) at CBR, default
 H.264 with Opus audio. No video source is configured through HTTP.
 
-Limits: 10 retained session directories in both modes. With video enabled,
-`CAPTURE_STORAGE_GB` is the admission ceiling, half of it is the per-session soft
-stop threshold sampled every 500 ms, and worker files have a 2 GiB hard limit.
-Without video there is no application file-size limit. Both modes allow 32 HTTP
-connections and have 5-second request/header deadlines and a 30-second startup
+Limits: with video enabled, 10 retained session directories and
+`CAPTURE_STORAGE_GB` are admission ceilings, half of the storage ceiling is the
+per-session soft stop threshold sampled every 500 ms, and worker files have a 2 GiB
+hard limit. Without video there is no application storage limit. Both modes allow 32
+HTTP connections and have 5-second request/header deadlines and a 30-second startup
 deadline. Video storage thresholds are stop/admission limits, not filesystem quotas;
 writes and extraction can overshoot between checks. Use a filesystem quota if a hard
-total-disk limit is required. Old captures are never automatically deleted; operator
-removal is required at 10 retained directories. The collector's existing extraction
-is not a streaming, constant-memory pipeline.
+total-disk limit is required. Old captures are never automatically deleted. The
+collector's existing extraction is not a streaming, constant-memory pipeline.
 
 After STOP, the watchdog requests termination of only the owned detached child
 process group at 30 seconds and SIGKILL at 45 seconds. A watchdog intervention

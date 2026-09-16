@@ -137,6 +137,7 @@ try {
     // Capture-only mode ignores both the root storage ceiling and session file size.
     const retained = join(lanData, 'retained');
     writeFileSync(retained, ''); truncateSync(retained, 2 * 1024 ** 3);
+    for (let index = 0; index < 10; index += 1) mkdirSync(join(lanData, `retained-${index}`));
     const started = await fetch(lanBase + '/api/start', { method: 'POST', headers: { Origin: lanBase, 'X-Capture-Action': '1' }, body: JSON.stringify({ name: 'Unlimited capture' }) });
     assert.equal(started.status, 202);
     const lanState = async () => (await fetch(lanBase + '/api/session')).json();
