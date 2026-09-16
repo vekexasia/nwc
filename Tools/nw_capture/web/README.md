@@ -81,7 +81,9 @@ Duration is time since the server accepted START, including setup and cleanup,
 not just time hooked. The browser extrapolates from server time, not its wall clock.
 Count means **DTLS batches**, not packets or decoded messages. Error status is the
 collector's nonzero exit/error status, not a count of individual logged events.
-Raw payloads, target addresses and exception details are never sent to the UI.
+Raw payloads, target addresses and host paths are never sent to the UI.
+Monitoring failures show a sanitized exception summary; the full exception is written
+to the server's stderr.
 
 Each observing page attempts one automatic download per completed ID, including a
 newly opened page observing completion. No local/session storage controls capture.
@@ -93,9 +95,10 @@ failure. YouTube streaming and its OAuth lifecycle were removed with the ffmpeg
 backend; the server refuses to start when `YOUTUBE_KEY_FILE` or `YOUTUBE_OAUTH_CONFIG`
 is still set.
 
-The ZIP contains aggregate `metadata.json`, the raw `ledger.bin` and, when video is
-enabled, `gameplay.mkv` stored without compression. `CAPTURE_EXPORT_RAW=1` adds the
-rest of `captures/`. Raw export excludes `keylog.txt` and runtime logs but HTTPS
+The ZIP contains aggregate `metadata.json`, the raw `ledger.bin`, measured
+`fragments.jsonl` when replicated state was observed and, when video is enabled,
+`gameplay.mkv` stored without compression. `CAPTURE_EXPORT_RAW=1` adds the rest of
+`captures/`. Raw export excludes `keylog.txt` and runtime logs but HTTPS
 payloads/metadata can still contain credentials. Only enable it on a trusted
 local/tunnel endpoint. The ledger holds raw game traffic: treat the archive as private.
 The host keeps its own copy of the video and the ledger after the download.

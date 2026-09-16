@@ -34,6 +34,8 @@ LOGS_DIR      = HERE / "logs"
 COMMON_JS     = HERE / "_common.js"
 DTLS_LEDGER_JS = HERE / "_dtls_ledger.js"
 CAPTURES_ROOT = HERE / "captures"
+FRAGMENT_BODY_BYTES_MAX = 8192
+FRAGMENT_BATCH_BYTES_MAX = 256 * 1024
 
 
 def validate_mode(target_path, host, pid, timeout_s):
@@ -82,6 +84,9 @@ class FridaRunner:
         self._detached_reason: str | None = None
         self._detached_crash: object | None = None
         self._log_file = None
+        self._fragments_path: Path | None = None
+        self._fragments_f = None
+        self._fragment_lines = 0
 
         # Auto-ledger sinks (deferred to _open_dtls_sinks, called from
         # run() AFTER subclasses have had a chance to override
@@ -290,8 +295,60 @@ class FridaRunner:
             print(f"   ledger bytes  = {self._ledger_bytes}")
             print(f"   ledger batches= {self._ledger_batches}")
             print(f"   keylog lines  = {self._keylog_lines}")
+        if self._fragments_f is not None:
+            for operation in (self._fragments_f.flush, self._fragments_f.close):
+                try:
+                    operation()
+                except OSError as e:
+                    self.exit_code = max(self.exit_code, 2)
+                    self._record("capture_incomplete", {"msg": f"fragment sink: {e}"})
 
     # --- frida callbacks ------------------------------------------------
+
+    def _write_fragment_batch(self, payload: dict) -> None:
+        try:
+            items = payload.get("items")
+            if (type(payload.get("count")) is not int or not isinstance(items, list)
+                    or payload["count"] != len(items)):
+                raise ValueError("invalid fragment batch count")
+
+            lines = []
+            encoded_bytes = 0
+            fields = {"key", "v1", "v2", "type", "class", "decoder", "accepted", "body"}
+            for item in items:
+                if not isinstance(item, dict) or set(item) != fields:
+                    raise ValueError("invalid fragment fields")
+                numeric = ("key", "v1", "v2", "type", "class", "decoder")
+                if any(type(item[key]) is not int or not 0 <= item[key] <= 0xffff_ffff for key in numeric):
+                    raise ValueError("invalid fragment identifiers")
+                if item["key"] != item["v2"]:
+                    raise ValueError("fragment key differs from v2")
+                if type(item["accepted"]) is not bool:
+                    raise ValueError("invalid fragment verdict")
+                body = item["body"]
+                if not isinstance(body, str):
+                    raise ValueError("invalid fragment body")
+                body_bytes = bytes.fromhex(body)
+                if not body_bytes or len(body_bytes) > FRAGMENT_BODY_BYTES_MAX or len(body) != 2 * len(body_bytes):
+                    raise ValueError("invalid fragment body length")
+                line = json.dumps(item, separators=(",", ":")) + "\n"
+                encoded_bytes += len(line.encode("ascii"))
+                if encoded_bytes > FRAGMENT_BATCH_BYTES_MAX:
+                    raise ValueError("fragment batch exceeds byte limit")
+                lines.append(line)
+
+            if not lines:
+                return
+            if self._fragments_f is None:
+                self._fragments_path = CAPTURES_ROOT / self.session / "fragments.jsonl"
+                self._fragments_path.parent.mkdir(parents=True, exist_ok=True)
+                self._fragments_f = self._fragments_path.open("a", encoding="ascii", buffering=1)
+            self._fragments_f.writelines(lines)
+            self._fragments_f.flush()
+            self._fragment_lines += len(lines)
+        except (OSError, TypeError, ValueError) as e:
+            self.exit_code = max(self.exit_code, 2)
+            self._record("capture_incomplete", {"msg": f"fragment batch: {e}"})
 
     def _on_message(self, message: dict, data) -> None:
         with self._message_lock:
@@ -318,6 +375,21 @@ class FridaRunner:
                     self._record("capture_incomplete", {"msg": "final DTLS counts differ"})
                 else:
                     self._stopped.set()
+
+            # Fragment bodies have their own one-record-per-line sink. Do not
+            # duplicate them into the generic trace log.
+            if ptype == "fragment_samples":
+                self._write_fragment_batch(payload)
+                return
+            if ptype == "fragment_stats":
+                stats = {key: payload.get(key) for key in
+                         ("captured", "sent", "batches", "dropped", "oversized", "refused")}
+                if any(type(value) is not int or value < 0 for value in stats.values()):
+                    self.exit_code = max(self.exit_code, 2)
+                    self._record("capture_incomplete", {"msg": "invalid fragment statistics"})
+                elif stats["sent"] != self._fragment_lines:
+                    self.exit_code = max(self.exit_code, 2)
+                    self._record("capture_incomplete", {"msg": "final fragment count differs"})
 
             # Auto-ledger: bypass JSONL trace for the hot-path ledger
             # batches, write straight to disk. Other dtls events keep

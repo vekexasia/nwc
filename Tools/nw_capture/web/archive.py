@@ -17,16 +17,21 @@ def archive(root):
         raise ValueError('Incomplete capture')
     # A closed game ends the capture without the final flush: what already reached
     # the ledger stays valid, and final_flush_acknowledged records the difference.
-    # The download carries the ledger, the video and aggregate metadata only.
+    # The download carries the ledger, measured fragments, video and aggregate metadata.
     # Runtime logs, HTTPS bodies/headers and TLS keys stay on the host.
     safe = {key: meta[key] for key in ('started_at_utc', 'stopped_at_utc',
             'ledger_bytes_received', 'ledger_batches_received',
             'final_flush_acknowledged', 'sink_write_succeeded')}
     session = json.loads((root / 'session.json').read_text()) if (root / 'session.json').exists() else {}
     safe.update({key: session[key] for key in ('name', 'id', 'videoState', 'error') if key in session})
+    fragments = metas[0].parent.parent / 'fragments.jsonl'
+    if fragments.is_symlink():
+        raise ValueError('Unsafe fragment path')
     with zipfile.ZipFile(root / 'capture.zip', 'x', compression=zipfile.ZIP_DEFLATED) as output:
         output.writestr('metadata.json', json.dumps(safe, indent=2))
         output.write(ledger, 'ledger.bin')
+        if fragments.is_file():
+            output.write(fragments, 'fragments.jsonl')
         video = root / 'gameplay.mkv'
         if video.is_file() and not video.is_symlink():
             # Stored: deflating an already compressed video only costs time.

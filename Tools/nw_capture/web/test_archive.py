@@ -57,10 +57,13 @@ class ArchiveTests(unittest.TestCase):
             (root / 'session.json').write_text(json.dumps(dict(name='Session à', id='abc',
                 streamKey='NEVER_EXPORT')))
             meta.with_name('ledger.bin').write_bytes(b'captured')
+            meta.parent.parent.joinpath('fragments.jsonl').write_text('{"body":"deadbeef"}\n')
             (root / 'gameplay.mkv').write_bytes(b'LOCAL_VIDEO_ONLY')
             archive(root)
             with zipfile.ZipFile(root / 'capture.zip') as output:
-                self.assertEqual(set(output.namelist()), {'metadata.json', 'ledger.bin', 'gameplay.mkv'})
+                self.assertEqual(set(output.namelist()),
+                                 {'metadata.json', 'ledger.bin', 'fragments.jsonl', 'gameplay.mkv'})
+                self.assertEqual(output.read('fragments.jsonl'), b'{"body":"deadbeef"}\n')
                 self.assertEqual(output.read('gameplay.mkv'), b'LOCAL_VIDEO_ONLY')
                 self.assertEqual(json.loads(output.read('metadata.json'))['name'], 'Session à')
                 self.assertNotIn(b'NEVER_EXPORT', output.read('metadata.json'))

@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
-const source = ['_common.js', '_dtls_ledger.js', 'nw_https_tap.js']
+const source = ['_common.js', '_dtls_ledger.js', 'nw_https_tap.js', 'experimental/nw_join_probe.js']
     .map(n => fs.readFileSync(path.join(__dirname, n), 'utf8')).join('\n');
 // Sanitized upstream hook fixture: image size and instruction fingerprints only.
 // Source: Aeternum-World logs/20260611-024200_nw_https_tap.log, first two events.
@@ -127,4 +127,124 @@ assert.equal(stats.bytes, f.binary[0].length);
 assert.equal(stats.flushes, 1);
 if (process.argv[2]) fs.writeFileSync(process.argv[2], Buffer.concat(f.binary));
 if (process.argv[3]) fs.writeFileSync(process.argv[3], f.events.map(e => JSON.stringify(e)).join('\n'));
-console.log('Agent validation, callback observation, final flush and late-callback guards passed.');
+
+function checkFragmentCapture() {
+    const source = fs.readFileSync(path.join(__dirname, 'experimental/nw_join_probe.js'), 'utf8');
+    const imageBase = 0x140000000n;
+    const hooks = new Map(), events = [], pointers = new Map(), byteRanges = [];
+    let cursor, baseInstalls = 0, baseStops = 0;
+
+    class Pointer {
+        constructor(n) { this.n = BigInt(n instanceof Pointer ? n.n : n); }
+        add(n) { return new Pointer(this.n + new Pointer(n).n); }
+        sub(n) { return new Pointer(this.n - new Pointer(n).n); }
+        compare(p) { return this.n < p.n ? -1 : this.n > p.n ? 1 : 0; }
+        toString() { return '0x' + this.n.toString(16); }
+        toInt32() { return Number(BigInt.asIntN(32, this.n)); }
+        toUInt32() { return Number(BigInt.asUintN(32, this.n)); }
+        readPointer() {
+            if (this.n === 0x4010n) return cursor;
+            const value = pointers.get(this.n);
+            if (value === undefined) throw new Error('unmapped pointer ' + this);
+            return new Pointer(value);
+        }
+        readU16() {
+            if (this.n !== 0x2000n) throw new Error('unmapped u16 ' + this);
+            return 41;
+        }
+        readByteArray(length) {
+            for (const [start, bytes] of byteRanges) {
+                const offset = Number(this.n - start);
+                if (offset >= 0 && offset + length <= bytes.length) {
+                    return bytes.slice(offset, offset + length).buffer;
+                }
+            }
+            throw new Error('unmapped bytes ' + this);
+        }
+    }
+
+    const ptr = value => new Pointer(value);
+    const module = {name: 'NewWorld.exe', base: ptr(imageBase), size: 183214080};
+    const before = ptr(0x5000);
+    const body = new Uint8Array(2 + 8193);
+    body[0] = 7;
+    body[1] = 100;
+    for (let i = 2; i < body.length; i++) body[i] = i & 0xff;
+    byteRanges.push([before.n, body]);
+    pointers.set(0x3000n, 0x4000n);              // args[0] -> reader context
+    pointers.set(0x6008n, 0x7000n);              // vector end
+    pointers.set(0x6ff0n, 0x8000n);              // final vector entry -> object
+    pointers.set(0x8000n, imageBase + 0x8480a70n); // object -> vtable
+    pointers.set(imageBase + 0x8480a70n + 0x90n, imageBase + 0x5dd9cf0n);
+
+    const sandbox = {
+        rpc: {exports: {
+            install() { baseInstalls++; },
+            stop() { baseStops++; },
+        }},
+        Process: {
+            findModuleByName: name => name === 'NewWorld.exe' ? module : null,
+            enumerateModules: () => [module],
+        },
+        Interceptor: {
+            attach(address, callbacks) { hooks.set(address.toString(), callbacks); return {detach() {}}; },
+        },
+        setInterval: () => 1,
+        clearInterval: () => {},
+        send(event) { events.push(JSON.parse(JSON.stringify(event))); },
+    };
+    const context = vm.createContext(sandbox);
+    vm.runInContext(source, context);
+    context.rpc.exports.install();
+    assert.equal(baseInstalls, 1, 'probe install must preserve earlier capture hooks');
+
+    const record = hooks.get(ptr(imageBase + 0x6af20d0n).toString());
+    const chunk = hooks.get(ptr(imageBase + 0x6af2340n).toString());
+    const recordCall = {threadId: 9};
+    record.onEnter.call(recordCall, [ptr(0), ptr(0x2000)]);
+    function capture(payloadLength, accepted = true) {
+        cursor = before;
+        const call = {threadId: 9};
+        chunk.onEnter.call(call, [ptr(0x3000), ptr(0x6000)]);
+        cursor = before.add(2 + payloadLength);
+        chunk.onLeave.call(call, ptr(accepted ? 1 : 0));
+    }
+    for (let i = 0; i < 20; i++) capture(8192);
+    capture(8193);
+    capture(4, false);
+    body[1] = 0;
+    capture(16 + 4);
+    context.rpc.exports.stop();
+
+    const join = events.find(event => event.type === 'join_samples');
+    assert.equal(join.items.length, 22);
+    assert.equal(join.items[0].length, 7, 'join_samples tuple shape changed');
+    assert.equal(join.items[0][5], 8192);
+    assert.equal(join.items[0][6].length, 400, 'join_samples must retain the 200-byte view');
+
+    const batches = events.filter(event => event.type === 'fragment_samples');
+    assert(batches.length >= 2, 'fragment stream must flush by encoded bytes');
+    assert(batches.every(batch => batch.encoded_bytes <= 256 * 1024));
+    const fragments = batches.flatMap(batch => batch.items);
+    assert.equal(fragments.length, 21);
+    assert.deepEqual(Object.keys(fragments[0]),
+        ['key', 'v1', 'v2', 'type', 'class', 'decoder', 'accepted', 'body']);
+    assert.equal(fragments[0].key, 7);
+    assert.equal(fragments[0].class, 0x8480a70);
+    assert.equal(fragments[0].decoder, 0x5dd9cf0);
+    assert.equal(fragments[0].body.length, 8192 * 2);
+    const inlineUuid = fragments.at(-1);
+    assert.equal(inlineUuid.type, 0);
+    assert.equal(inlineUuid.body, Buffer.from(body.slice(18, 22)).toString('hex'),
+        'inline type UUID must not be part of the decoder body');
+    const stats = events.find(event => event.type === 'fragment_stats');
+    assert.equal(stats.oversized, 1);
+    assert.equal(stats.captured, 21);
+    assert.equal(stats.sent, 21);
+    assert.equal(stats.batches, batches.length);
+    assert.equal(stats.dropped, 0);
+    assert.equal(stats.refused, 1);
+    assert.equal(baseStops, 1, 'probe stop must finish the shared capture lifecycle');
+}
+checkFragmentCapture();
+console.log('Agent validation, callback observation, fragment bounds and final flush passed.');

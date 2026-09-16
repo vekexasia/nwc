@@ -96,6 +96,42 @@ class CaptureTests(unittest.TestCase):
         self.assert_attach_only()
         self.assertEqual(self.order[-2:], ["unload", "detach"])
 
+    def test_https_capture_includes_the_fragment_probe(self):
+        runner = nw_capture.HttpsTapRunner(None, 1, "session", host="server", pid=1)
+        self.assertEqual(
+            [path.relative_to(_runner.HERE).as_posix() for path in runner.script_paths],
+            ["nw_https_tap.js", "experimental/nw_join_probe.js"],
+        )
+
+    def test_fragment_batches_have_a_dedicated_flattened_sink(self):
+        fragments = [
+            {"key": 7, "v1": 41, "v2": 7, "type": 1589, "class": 0x8480a70,
+             "decoder": 0x5dd9cf0, "accepted": True, "body": "deadbeef"},
+            {"key": 8, "v1": 42, "v2": 8, "type": 0, "class": 0x8480a70,
+             "decoder": 0x5dd9cf0, "accepted": True, "body": "0102"},
+        ]
+        finish = self.stop
+        def stop_with_fragments():
+            self.runner._on_message({"type": "send", "payload": {
+                "type": "fragment_samples", "count": len(fragments),
+                "encoded_bytes": 1, "items": fragments,
+            }}, None)
+            self.runner._on_message({"type": "send", "payload": {
+                "type": "fragment_stats", "captured": 2, "sent": 2,
+                "batches": 1, "dropped": 0, "oversized": 0, "refused": 0,
+            }}, None)
+            finish()
+        self.script.exports_sync.stop.side_effect = stop_with_fragments
+
+        self.assertEqual(self.run_capture(), 0)
+        lines = self.runner._fragments_path.read_text().splitlines()
+        self.assertEqual([json.loads(line) for line in lines], fragments)
+        self.assertTrue(self.runner._fragments_f.closed)
+        trace = self.runner.log_path.read_text()
+        self.assertNotIn("fragment_samples", trace)
+        self.assertNotIn("deadbeef", trace)
+        self.assertIn("fragment_stats", trace)
+
     def test_install_failure_still_detaches(self):
         self.script.exports_sync.install.side_effect = RuntimeError("unsupported build")
         with self.assertRaisesRegex(RuntimeError, "unsupported build"):

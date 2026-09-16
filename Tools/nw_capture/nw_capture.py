@@ -43,7 +43,7 @@ class HttpsTapRunner(FridaRunner):
                  host=None, pid=None):
         super().__init__(
             target_path=target_path,
-            scripts=["nw_https_tap.js"],
+            scripts=["nw_https_tap.js", "experimental/nw_join_probe.js"],
             timeout_s=timeout_s,
             log_stem="nw_https_tap",
             session=session_name,

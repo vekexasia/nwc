@@ -51,6 +51,7 @@ The downloaded ZIP contains:
 
 - `metadata.json`: session details and capture counters.
 - `ledger.bin`: captured network data.
+- `fragments.jsonl`: replicated-state bodies measured by the game decoder, when observed.
 - `gameplay.mkv`: gameplay video, when video recording is enabled.
 
 Capture files can contain sensitive traffic. Keep them private and do not
